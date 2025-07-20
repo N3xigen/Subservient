@@ -337,11 +337,14 @@ def cleanup_duplicates_in_folder(folder: str, languages):
                 correct = f"{base_name}.{lang}.srt"
                 if os.path.exists(os.path.join(folder, correct)):
                     for g in files:
-                        if (g != correct and f".{lang}" in g and 
-                            g.endswith('.srt')):
+                        if (g != correct and 
+                            f".{lang}.number" in g and 
+                            g.endswith('.srt') and
+                            not g.endswith('.FAILED.srt') and
+                            not g.endswith('.DRIFT.srt')):
                             try:
                                 os.remove(os.path.join(folder, g))
-                                print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed redundant subtitle: {g}{Style.RESET_ALL}")
+                                print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed redundant numbered subtitle: {g}{Style.RESET_ALL}")
                             except Exception as e:
                                 print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {g}: {e}{Style.RESET_ALL}")
 
