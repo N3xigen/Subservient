@@ -1,0 +1,8 @@
+colorama
+requests
+langdetect
+ffsubsync
+platformdirs
+pycountry
+tqdm
+openai-whisper

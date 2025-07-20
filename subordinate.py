@@ -1,0 +1,832 @@
+import os
+import sys
+import subprocess
+
+def ensure_core_requirements():
+    """
+    Check if required packages are installed and offer to install missing ones.
+    Exits the program after installation or if user declines installation.
+    """
+    REQUIRED_PACKAGES = [
+        ("colorama", None),
+        ("platformdirs", None),
+        ("pycountry", None),
+        ("requests", None),
+        ("tqdm", None),
+        ("ffsubsync", None),
+        ("langdetect", None),
+    ]
+    missing = []
+    for pkg, import_name in REQUIRED_PACKAGES:
+        try:
+            __import__(import_name or pkg)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print("\n[Subservient] The following required packages are missing:")
+        for pkg in missing:
+            print(f"  - {pkg}")
+        choice = input("\nWould you like to install ALL missing packages now? [Y/n]: ").strip().lower()
+        if choice in ('', 'y', 'yes'):
+            try:
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
+                print("\nSuccessfully installed required packages.\n")
+                if os.name == 'nt':
+                    os.system('cls')
+                else:
+                    os.system('clear')
+                print("[Subservient] All essential packages for Subservient are now installed.")
+                print("[Subservient] It's strongly recommended to verify and test all packages")
+                print("[Subservient] When opening subordinate.py, use option '4' to test the installed packages.")
+                print("[Subservient] Please close this terminal and try restarting subordinate.py =)\n\n")
+                input("Press Enter to exit...")
+                sys.exit(0)
+            except Exception as e:
+                print(f"\n[ERROR] Failed to install packages: {e}\nPlease install them manually and restart the script.")
+                input("\nPress Enter to exit...")
+                sys.exit(1)
+            print("\n[Subservient] Required packages are missing. Exiting.")
+            input("\nPress Enter to exit...")
+            sys.exit(1)
+
+ensure_core_requirements()
+
+print("[Subservient] Loading imports..")
+import importlib.util
+import time
+from colorama import init, Fore, Style
+from pathlib import Path
+from platformdirs import user_config_dir
+from datetime import datetime
+import re
+import pycountry
+import requests
+init(autoreset=True)
+
+BANNER_LINE = f"                   {Fore.LIGHTRED_EX}[Phase 1/4]{Style.RESET_ALL} Subservient Set-up"
+LOGS_DIR = Path(__file__).parent / "logs"
+
+def write_anchor_to_pathfile():
+    """
+    Write or update the subservient anchor path in the pathfile.
+    Creates config directory and pathfile if they don't exist.
+    """
+    config_dir = Path(user_config_dir("Subservient"))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    pathfile = config_dir / "Subservient_pathfiles"
+    anchor_path = str(Path(__file__).resolve().parent)
+    lines = []
+    if pathfile.exists():
+        with open(pathfile, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        found = False
+        for i, line in enumerate(lines):
+            if line.startswith("subservient_anchor="):
+                lines[i] = f"subservient_anchor={anchor_path}"
+                found = True
+                break
+        if not found:
+            lines.append(f"subservient_anchor={anchor_path}")
+    else:
+        lines = [f"subservient_anchor={anchor_path}"]
+    with open(pathfile, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+def print_subservient_checklist():
+    """
+    Display pre-flight checklist with current configuration and video processing settings.
+    Shows mode, processing type, language settings, and other important parameters.
+    """
+    config_dir = Path(user_config_dir("Subservient"))
+    pathfile = config_dir / "Subservient_pathfiles"
+    anchor_path = None
+    if pathfile.exists():
+        with open(pathfile, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("subordinate_path="):
+                    subordinate_path = Path(line.split("=", 1)[1].strip())
+                    anchor_path = subordinate_path.parent
+                    break
+    if anchor_path is None:
+        anchor_path = Path(__file__).parent.resolve()
+    
+    config_path = anchor_path / '.config'
+    config = {}
+    if config_path.exists():
+        with open(config_path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                m = re.match(r'^([a-zA-Z0-9_]+)\s*=\s*(.+)$', line)
+                if m:
+                    config[m.group(1).strip().lower()] = m.group(2).strip()
+    
+    series_mode = config.get('series_mode', None)
+    top_downloads = config.get('top_downloads', None)
+    delete_extra_videos = config.get('delete_extra_videos', None)
+    
+    local_path = Path(__file__).parent.resolve()
+    video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
+    direct_videos = [f for f in local_path.iterdir() if f.is_file() and f.suffix.lower() in video_exts]
+    
+    if direct_videos:
+        processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
+        maps_found = f"{Fore.GREEN}1{Style.RESET_ALL}"
+    else:
+        subfolders = [f for f in local_path.iterdir() if f.is_dir()]
+        count = sum(1 for folder in subfolders if [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in video_exts])
+        processing_type = f"{Fore.CYAN}Batch processing{Style.RESET_ALL}"
+        maps_found = f"{Fore.GREEN}{count}{Style.RESET_ALL}"
+    
+    mode = (f"{Fore.GREEN}Series mode{Style.RESET_ALL}" if series_mode and series_mode.strip().lower() == 'true' 
+            else f"{Fore.GREEN}Movie mode{Style.RESET_ALL}" if series_mode 
+            else f"{Fore.RED}N/A (series_mode missing in config){Style.RESET_ALL}")
+    
+    subtitle_downloads = f"{Fore.YELLOW}{top_downloads}{Style.RESET_ALL}" if top_downloads else f"{Fore.RED}N/A{Style.RESET_ALL}"
+    
+    if delete_extra_videos is not None:
+        delete_status = (f"{Fore.RED}PERMANENTLY DELETE extra videos{Style.RESET_ALL}" 
+                        if delete_extra_videos.strip().lower() == 'true' 
+                        else f"{Fore.CYAN}Move extra videos to 'Extras' folder{Style.RESET_ALL}")
+    else:
+        delete_status = f"{Fore.RED}N/A (delete_extra_videos missing in config){Style.RESET_ALL}"
+    
+    folder_path = Path(__file__).parent.resolve()
+    folder_name = folder_path.name
+    short_path = str(folder_path.parent / (folder_name[:37] + '...' if len(folder_name) > 40 else folder_name))
+    
+    subtitle_sync_threshold = config.get('subtitle_sync_threshold', None)
+    threshold_str = (f"{int(float(subtitle_sync_threshold) * 1000)} ms" 
+                    if subtitle_sync_threshold and subtitle_sync_threshold.replace('.', '').isdigit()
+                    else f"{Fore.RED}N/A{Style.RESET_ALL}")
+    
+    print(f"{Style.BRIGHT}{Fore.BLUE}  [ Subservient Pre-Flight Checklist ]{Style.RESET_ALL}\n")
+    print(f"  {Fore.WHITE}Location:{Style.RESET_ALL}         {Fore.LIGHTYELLOW_EX}{short_path}{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}Mode:{Style.RESET_ALL}             {mode}")
+    print(f"  {Fore.WHITE}Processing type:{Style.RESET_ALL}  {processing_type}")
+    print(f"  {Fore.WHITE}Maps found:{Style.RESET_ALL}       {maps_found}")
+    
+    subtitle_langs = config.get('languages', None)
+    audio_langs = config.get('audio_track_languages', None)
+    print(f"  {Fore.WHITE}Subtitle languages to find:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{subtitle_langs if subtitle_langs else 'N/A'}{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}Audio track languages to keep:{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}{audio_langs if audio_langs else 'N/A'}{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}Subtitle downloads per batch:{Style.RESET_ALL} {subtitle_downloads}")
+    print(f"  {Fore.WHITE}Extra video handling:{Style.RESET_ALL}   {delete_status}")
+    print(f"  {Fore.WHITE}Subtitle delay threshold:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{threshold_str}{Style.RESET_ALL}")
+    print(f"\n{Fore.LIGHTYELLOW_EX}  Is everything set correctly?{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}  1{Style.RESET_ALL} = Looks good, start Subservient!")
+    print(f"{Fore.RED}  2{Style.RESET_ALL} = This is incorrect. Exit so that I can fix it")
+def print_main_menu():
+    """Display the main menu options for the Subservient application."""
+    print(f"\n{Style.BRIGHT}{Fore.YELLOW}What would you like to do?{Style.RESET_ALL}\n")
+    print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Start Subservient")
+    print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Scan subtitle coverage")
+    print(f"  {Fore.GREEN}3{Style.RESET_ALL} = Show quick instructions")
+    print(f"  {Fore.GREEN}4{Style.RESET_ALL} = Install & verify requirements")
+    print(f"  {Fore.GREEN}5{Style.RESET_ALL} = Recreate .config file")
+    print(f"  {Fore.GREEN}6{Style.RESET_ALL} = Open README file")
+    print(f"  {Fore.GREEN}7{Style.RESET_ALL} = Exit\n")
+
+def print_instructions_page(page):
+    """
+    Display a specific page of the instruction manual.
+    
+    Args:
+        page (int): Page number to display (1-5)
+    """
+    utils.clear_and_print_ascii(BANNER_LINE)
+    if page == 1:
+        print(f"{Style.BRIGHT}{Fore.CYAN}[1/5] Installing, configuring and running Subservient{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}1.{Style.RESET_ALL} Start by selecting option {Fore.YELLOW}'4'{Style.RESET_ALL} in the menu.")
+        print(f"   This will check if all required packages are installed and working.")
+        print(f"   If there are any issues, consult the README, ask ChatGPT, or open an issue on GitHub.")
+        print(f"   All errors and test results are shown in the terminal and saved in the logs folder.\n")
+    elif page == 2:
+        print(f"{Style.BRIGHT}{Fore.CYAN}[2/5] Configuration: .config and OpenSubtitles{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}2.{Style.RESET_ALL} Open the {Fore.YELLOW}.config{Style.RESET_ALL} file in your Subservient folder.")
+        print(f"   Fill in all required settings. The most important are:")
+        print(f"   - {Fore.CYAN}OpenSubtitles API key{Style.RESET_ALL}")
+        print(f"   - {Fore.CYAN}Username and password{Style.RESET_ALL}\n")
+        print(f"   You need to create an OpenSubtitles account and then create a 'consumer' (API application).")
+        print(f"   Detailed instructions for this are in the README.")
+        print(f"   Adjust other settings as needed for your preferences.\n")
+    elif page == 3:
+        print(f"{Style.BRIGHT}{Fore.CYAN}[3/5] Placing subordinate.py and processing modes{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}3.{Style.RESET_ALL} Move {Fore.YELLOW}subordinate.py{Style.RESET_ALL} to the folder you want to process.")
+        print(f"   There are two modes:")
+        print(f"   - {Fore.CYAN}Single file processing:{Style.RESET_ALL} Place subordinate.py in a folder with one video file.")
+        print(f"   - {Fore.CYAN}Batch processing:{Style.RESET_ALL} Place subordinate.py in a folder with multiple subfolders, each containing a video file.")
+        print(f"   If there is a video file next to subordinate.py, single file mode is used. Otherwise, batch mode is used.\n")
+        print(f"   {Fore.YELLOW}In your .config, the setting 'series_mode' is available.\n   It is 'false' by default, but set it to 'true' if you want to process TV series.{Style.RESET_ALL}")
+        print(f"   {Fore.LIGHTRED_EX}Do not mix single movies and series in one run, as this WILL cause unwanted results!{Style.RESET_ALL}\n")
+        print(f"   So make sure that your video files are correctly organized before starting.\n")
+    elif page == 4:
+        print(f"{Style.BRIGHT}{Fore.CYAN}[4/5] Running Subservient and pre-flight checklist{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}4.{Style.RESET_ALL} Once subordinate.py is in the right place, run it and choose {Fore.YELLOW}'1'{Style.RESET_ALL} to start.")
+        print(f"   You will see a pre-flight checklist with all important variables and settings.")
+        print(f"   Carefully check these before continuing.")
+        print(f"   If everything looks correct, you can proceed.\n")
+        print(f"   Subservient will now go through the Extraction, Acquisition and Synchronisation phase.")
+        print(f"   If everything is configured correctly, this process is automatic for the most part.")
+        print(f"   Only when something is not clear for Subservient, will it start asking you what to do.\n")
+    elif page == 5:
+        print(f"{Style.BRIGHT}{Fore.CYAN}[5/5] Tips & Troubleshooting{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}*{Style.RESET_ALL} If you move subordinate.py, run it again in the new folder to update the location.")
+        print(f"{Fore.GREEN}*{Style.RESET_ALL} All logs and outputs are saved in the main Subservient folder.")
+        print(f"{Fore.GREEN}*{Style.RESET_ALL} If you have issues, check your .config and requirements first.")
+        print(f"{Fore.GREEN}*{Style.RESET_ALL} For advanced options, see the README or .config comments.")
+        print(f"{Fore.GREEN}*{Style.RESET_ALL} Still stuck? Open an issue on GitHub or ask ChatGPT for help.\n")
+        print(f"{Fore.LIGHTWHITE_EX}Subservient is free and open source.\nIf you appreciate the project, you can support future development via Buy Me a Coffee:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}https://buymeacoffee.com/nexigen{Style.RESET_ALL}\n")
+        print(f"{Fore.LIGHTWHITE_EX}I can't always offer one-on-one support to everyone, but donors are welcome to join my Discord for extra help.\nDonors can also get my builds/patches earlier (or as soon as I commit them) as an extra 'thank you'.\nMany thanks for understanding, for donating, and heck.. even just for using Subservient.{Style.RESET_ALL}")
+        print(f"{Fore.LIGHTMAGENTA_EX}-Nexigen")
+def show_instructions():
+    """
+    Interactive instruction manual with navigation between pages.
+    Allows users to go through 5 pages of setup and usage instructions.
+    """
+    page = 1
+    total_pages = 5
+    while True:
+        print_instructions_page(page)
+        if page < total_pages:
+            nav = input(f"\n{Style.BRIGHT}{Fore.YELLOW}Press Enter for next page, or {Fore.CYAN}b{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW} to go back to the main menu:{Style.RESET_ALL} ").strip().lower()
+            if nav == 'b':
+                break
+            page += 1
+        else:
+            input(f"\n{Style.BRIGHT}{Fore.YELLOW}Press Enter to return to the main menu.{Style.RESET_ALL} ")
+            break
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} This is the central script for Subservient subtitle automation.")
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} My anchor location is: {Fore.YELLOW}{Path(__file__).resolve().parent}{Style.RESET_ALL}\n")
+    print(f"{Style.DIM}When unsure how to proceed, you can consult the README file or press option '3' for guidance.{Style.RESET_ALL}")
+    print_main_menu()
+def reconstruct_config():
+    """
+    Create a new .config file with default template.
+    Prompts user for confirmation if existing config file found.
+    """
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.YELLOW}You can use this option to reconstruct the .config file if your current config is missing or not working properly.{Style.RESET_ALL}\n")
+    print(f"{Fore.WHITE}A new .config file will be created in the same directory as this script ({Path(__file__).parent}).{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}To use it, you must move this .config file back to the main Subservient folder if it is not already there.{Style.RESET_ALL}")
+    print(f"{Fore.LIGHTRED_EX}All settings in the new .config will need to be re-entered manually!{Style.RESET_ALL}\n")
+    print(f"{Fore.GREEN}1{Style.RESET_ALL} = Create new .config file now")
+    print(f"{Fore.RED}2{Style.RESET_ALL} = Return to main menu\n")
+    choice = input(f"Make a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+    if choice != "1":
+        print(f"{Fore.YELLOW}Config reconstruction cancelled. Returning to main menu.{Style.RESET_ALL}")
+        input("Press Enter to continue...")
+        print_full_main_menu()
+        return
+    
+    config_path = Path(__file__).parent / '.config'
+    if config_path.exists():
+        print(f"{Fore.YELLOW}A .config file already exists at: {config_path}{Style.RESET_ALL}")
+        confirm = input(f"{Fore.RED}Overwrite existing .config? (y/n): {Style.RESET_ALL}").strip().lower()
+        if confirm != 'y':
+            print(f"{Fore.GREEN}Config reconstruction cancelled.{Style.RESET_ALL}")
+            input("Press Enter to return to the main menu...")
+            print_full_main_menu()
+            return
+    
+    ascii_lines = utils.ASCII_ART.splitlines()
+    if ascii_lines:
+        ascii_lines[0] = '  ' + ascii_lines[0].lstrip()
+    ascii_block = '\n'.join(ascii_lines)
+    config_template = f'''{ascii_block}
+                             [.CONFIG FILE]
+
+[SETUP]
+# === Subtitle Acquisition Script Setup ===
+
+# API_KEY: Your OpenSubtitles consumer API key
+# USERNAME: Your OpenSubtitles username
+# PASSWORD: Your OpenSubtitles password
+# API_URL: OpenSubtitles API endpoint (only rename when OpenSubtitles changed their API URL)
+api_key=
+username=
+password=
+api_url= https://api.opensubtitles.com/api/v1
+
+# - LANGUAGES: Comma-separated list of subtitle languages to download (e.g. nl,en).
+# These are the languages for which subtitles will be searched and downloaded. Very important setting.
+# - AUDIO_TRACK_LANGUAGES: Comma-separated list of audio track languages to keep inside video files (e.g. nl,en,ja). ('undefined' tracks are always kept). Tracks with a language not in the list are removed.
+# Highly recommended to keep english in there, as 95% of all mainstream movies have english tracks only
+languages= nl,en
+audio_track_languages= en
+
+# SUBTITLE_THRESHOLD: Determines when manual video verification is needed after synchronisation.
+# Subtitles with a delay/offset below the set threshold won't get flagged for manual verification.
+# 0.03 or below would be very strict, 0.10 or higher would be lenient.
+# A low setting is recommended as it gives the most accuracy, but gives more manual checkups.
+subtitle_threshold= 0.05
+
+# SUBTITLE_SYNC_THRESHOLD: Manages the time that subtitles appear before audio (built-in offset).
+# Lower values = more responsive sync, higher values = more subtitle reading time.
+# Recommended: 0.00-0.05 for tight sync, 0.05 and up for easier reading, but a more loose sync.
+subtitle_sync_threshold= 0.02
+
+# - SERIES_MODE: If true, treat all videos in the same folder as episodes of a TV series.
+# If false, only the largest video file in each folder is processed (movie mode).
+# - DELETE_EXTRA_VIDEOS: If true, all extra video files in a folder will be permanently deleted.
+# If false, extra video files will be moved to a folder named by EXTRAS_FOLDER_NAME.
+# This setting is ignored if series_mode is true (in series mode, all videos are kept).
+# - EXTRAS_FOLDER_NAME: Name of the folder where extra video files are moved if DELETE_EXTRA_VIDEOS is false.
+series_mode= false
+delete_extra_videos= false
+extras_folder_name= extras
+
+# PAUSE_SECONDS: Number of seconds to pause between phases, breaks, and other script waits.
+# If you don't mind about reading what happens in the terminal, a lower value can be set.
+# Example: 5 means a 5 second pause between phases and after summaries. Average speed = 5.
+pause_seconds= 5
+
+# MAX_SEARCH_RESULTS: Maximum number of subtitle search results to consider per movie (e.g. 10).
+# Increasing MAX_SEARCH_RESULTS can help find more options, but may slow down processing.
+# When having a low download limit, it's strongly recommended to not go higher than 6
+max_search_results= 12
+
+# TOP_DOWNLOADS: Number of subtitles to download and test per batch.
+# Keeping TOP_DOWNLOADS low preserves your daily download limit by first testing one batch before downloading another batch. If you have a low download limit, then 1, (max 2) is strongly recommended
+top_downloads= 2
+
+# - SKIP_DIRS: Comma-separated list of directory names to skip when scanning for videos (e.g. extras,trailers,samples).
+# These directories will be ignored during video discovery in both movie and series mode.
+# Use lowercase names, matching is case-insensitive. Common examples: extras, trailers, samples, bonus.
+skip_dirs= new folder,nieuwe map,extra,extra's,extras,featurettes,bonus,bonusmaterial,bonus_material,behindthescenes,behind_the_scenes,deletedscenes,deleted_scenes,interviews,makingof,making_of,scenes,trailer,trailers,sample,samples,other,misc,specials,special_features,documentary,docs,docu,promo,promos,bloopers,outtakes
+
+# UNWANTED_TERMS: Comma-separated list of words/terms that should be filtered from subtitle search results. For example, a search can be 'Lord of the Rings 2001 [h.265 HEVC 10 bit]'. The whole latter part would then be removed, so that 'The lord of the Rings 2001' remains, giving a good search query.
+UNWANTED_TERMS= sample,cam,ts,workprint,unrated,uncut,720p,1080p,2160p,480p,4k,uhd,imax,eng,ita,jap,hindi,web,webrip,web-dl,bluray,brrip,bdrip,dvdrip,hdrip,hdtv,remux,x264,x265,h.264,h.265,hevc,avc,hdr,hdr10,hdr10+,dv,dolby.vision,sdr,10bit,8bit,ddp,dd+,dts,aac,ac3,eac3,truehd,atmos,flac,5.1,7.1,2.0,yts,yts.mx,yify,rarbg,fgt,galaxyrg,cm8,evo,sparks,drones,amiable,kingdom,tigole,chd,ddr,hdchina,cinefile,ettv,eztv,aXXo,maven,fitgirl,skidrow,reloaded,codex,cpy,conspir4cy,hoodlum,hive-cm8,extras,final.cut,open.matte,hybrid,version,v2,proper,limited,dubbed,subbed,multi,dual.audio,complete.series,complete.season,Licdom,ac,sub,nl,en,ita,eng,subs,rip,h265,xvid,mp3,mp4,avi,Anime Time,[Anime Time]
+# LEGAL DISCLAIMER: These filters clean technical metadata from filenames regardless of source.
+# Subservient is designed for use with content you legally own or have rights to process.
+# The inclusion of various format and distribution tags serves technical interoperability purposes only.
+
+# RUN_COUNTER: used to count how many full runs have been made. Also used to organize logfiles
+# Don't change if you don't need to, as it may result in overwriting existing logs
+run_counter= 0
+
+# === END OF SETUP ===
+# ------------------------------------------------------------
+# Everything below is managed automatically by the application.
+# Only change this if you know what you are doing!
+
+[RUNTIME]
+'''
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(config_template)
+    print(f"{Fore.GREEN}New .config file created at: {config_path}{Style.RESET_ALL}\n")
+    input("Press Enter to return to the main menu...")
+    print_full_main_menu()
+def ensure_initial_setup():
+    """
+    Verify that all required Subservient scripts are present and register their paths.
+    Creates pathfile with script locations for cross-module access.
+    Exits with error if required scripts are missing.
+    """
+    required_keys = ["subservient_anchor", "subordinate_path", "extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
+    required_scripts = ["subordinate.py", "extraction.py", "acquisition.py", "synchronisation.py", "utils.py"]
+    
+    config_dir = Path(user_config_dir("Subservient"))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    pathfile = config_dir / "Subservient_pathfiles"
+
+    def valid_pathfile():
+        """Check if pathfile exists and contains all required keys."""
+        if not pathfile.exists():
+            return False
+        lines = pathfile.read_text(encoding="utf-8").splitlines()
+        kv = {k.strip(): v.strip() for l in lines if '=' in l for k, v in [l.split('=', 1)]}
+        return all(k in kv and kv[k] for k in required_keys)
+    
+    if valid_pathfile():
+        return
+    
+    current_dir = Path(__file__).parent.resolve()
+    missing = [s for s in required_scripts if not (current_dir / s).exists()]
+    if missing:
+        utils.clear_and_print_ascii(BANNER_LINE)
+        print(f"{Fore.RED}{Style.BRIGHT}[ERROR]{Style.RESET_ALL} Setup cannot continue.\n")
+        print(f"{Fore.YELLOW}subordinate.py might not be in the main subservient folder, or files are missing.{Style.RESET_ALL}\n")
+        print(f"The following required scripts are missing in this folder:")
+        for s in missing:
+            print(f"  {Fore.RED}{s}{Style.RESET_ALL}")
+        print(f"\nPlease make sure missing files are present and/or move subordinate.py to the correct folder.")
+        print(f"\nWhen shit really hits the fan, you can always re-download the Subservient folder from GitHub.")
+        input("Press Enter to exit...")
+        sys.exit(1)
+    
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Fore.GREEN}{Style.BRIGHT}All required scripts found!{Style.RESET_ALL}\n")
+    print(f"{Fore.CYAN}Registering script paths and setting up Subservient...{Style.RESET_ALL}\n")
+    
+    with open(pathfile, "w", encoding="utf-8") as f:
+        f.write(f"subservient_anchor={current_dir}\n")
+        f.write(f"subordinate_path={current_dir / 'subordinate.py'}\n")
+        f.write(f"extraction_path={current_dir / 'extraction.py'}\n")
+        f.write(f"acquisition_path={current_dir / 'acquisition.py'}\n")
+        f.write(f"synchronisation_path={current_dir / 'synchronisation.py'}\n")
+        f.write(f"utils_path={current_dir / 'utils.py'}\n")
+    
+    print(f"{Fore.GREEN}Initial setup complete! All script paths have been registered.{Style.RESET_ALL}\n")
+    print(f"{Fore.YELLOW}You can now continue using Subservient.\n"
+          f"You may move subordinate.py to any folder you want to process.\n"
+          f"(You can use it for a single movie or a batch of folders.)\n"
+          f"For more help, read the README file or the instructions inside subordinate.py.{Style.RESET_ALL}\n")
+    input("Press Enter to continue...")
+    if not valid_pathfile():
+        print(f"{Fore.RED}{Style.BRIGHT}[ERROR]{Style.RESET_ALL} Pathfile is incomplete or invalid after setup. Please check your files and try again.")
+        sys.exit(1)
+ensure_initial_setup()
+write_anchor_to_pathfile()
+def get_log_path():
+    """
+    Create logs directory if needed and return the log file path.
+    
+    Returns:
+        Path: Path to the current log file
+    """
+    LOGS_DIR.mkdir(exist_ok=True)
+    log_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return LOGS_DIR / f"install_log_{log_timestamp}.txt"
+
+def log_requirements_event(message):
+    """
+    Log a timestamped message to the requirements installation log file.
+    
+    Args:
+        message (str): Message to log
+    """
+    log_path = get_log_path()
+    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"{timestamp} {message}\n")
+def get_config_and_pause_seconds():
+    """
+    Load configuration settings and extract pause_seconds value.
+    
+    Returns:
+        tuple: (config dict, pause_seconds float)
+    """
+    config_dir = Path(user_config_dir("Subservient"))
+    pathfile = config_dir / "Subservient_pathfiles"
+    anchor_path = Path(__file__).parent.resolve()
+    
+    if pathfile.exists():
+        with open(pathfile, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("subordinate_path="):
+                    subordinate_path = Path(line.split("=", 1)[1].strip())
+                    anchor_path = subordinate_path.parent
+                    break
+    
+    config_path = anchor_path / '.config'
+    config = {}
+    if config_path.exists():
+        with open(config_path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                m = re.match(r'^([a-zA-Z0-9_]+)\s*=\s*(.+)$', line)
+                if m:
+                    config[m.group(1).strip().lower()] = m.group(2).strip()
+    
+    pause_seconds = float(config.get('pause_seconds', 5))
+    return config, pause_seconds
+def check_requirements_status():
+    """
+    Check and test all required Python packages and ffmpeg installation.
+    Displays status for each requirement and logs results to file.
+    """
+    import importlib
+    import time
+    import pycountry
+    import requests
+    import re
+    
+    config, pause_seconds = get_config_and_pause_seconds()
+    status_lines = []
+    log_requirements_event("--- REQUIREMENTS VERIFICATION START ---")
+    
+    from platformdirs import user_config_dir
+    config_dir = Path(user_config_dir("Subservient"))
+    pathfile = Path(config_dir) / "Subservient_pathfiles"
+    anchor_path = Path(__file__).parent
+    
+    if pathfile.exists():
+        with open(pathfile, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("subservient_anchor="):
+                    anchor_path = Path(line.split("=", 1)[1].strip())
+                    break
+    
+    config_path = anchor_path / '.config'
+    config = {}
+    if config_path.exists():
+        with open(config_path, encoding='utf-8') as f:
+            for line in f:
+                m = re.match(r'^([a-zA-Z0-9_]+)\s*=\s*(.+)$', line.strip())
+                if m:
+                    config[m.group(1).strip().lower()] = m.group(2).strip()
+    
+    required = [
+        ("colorama", "Colorama"),
+        ("platformdirs", "Platformdirs"),
+        ("requests", "Requests"),
+        ("tqdm", "Tqdm"),
+        ("pycountry", "PyCountry"),
+        ("ffsubsync", "ffsubsync"),
+        ("langdetect", "langdetect"),
+    ]
+    
+    total = len(required) + 1
+    for idx, (mod, display) in enumerate(required, 1):
+        utils.clear_and_print_ascii(BANNER_LINE)
+        print(f"{Fore.LIGHTYELLOW_EX}Subservient is currently testing {display}... {Fore.LIGHTBLUE_EX}[{idx}/{total}]{Style.RESET_ALL}")
+        test_passed = False
+        test_msg = ""
+        
+        try:
+            m = importlib.import_module(mod)
+            if mod == "colorama":
+                _ = m.Fore.GREEN + m.Style.RESET_ALL
+                test_passed = True
+                test_msg = "colorama functional test passed"
+            elif mod == "platformdirs":
+                from platformdirs import user_config_dir
+                _ = user_config_dir("SubservientTest")
+                test_passed = True
+                test_msg = "platformdirs functional test passed"
+            elif mod == "requests":
+                print(f"{Fore.LIGHTYELLOW_EX}Testing internet connectivity... {Fore.LIGHTBLUE_EX}[{idx}/{total}]{Style.RESET_ALL}")
+                for i in range(5):
+                    try:
+                        r = requests.get("https://httpbin.org/get", timeout=3)
+                        if r.status_code == 200:
+                            test_passed = True
+                            test_msg = "requests functional test passed"
+                            break
+                    except Exception as e:
+                        log_requirements_event(f"Requests attempt {i+1}: {e}")
+                    if i < 4:
+                        time.sleep(pause_seconds)
+                if not test_passed:
+                    test_msg = "requests functional test failed"
+            elif mod == "tqdm":
+                from tqdm import tqdm
+                for _ in tqdm(range(1), disable=True):
+                    pass
+                test_passed = True
+                test_msg = "tqdm functional test passed"
+            elif mod == "pycountry":
+                lang = pycountry.languages.get(alpha_2="en")
+                test_passed = lang is not None and hasattr(lang, "alpha_3")
+                test_msg = "pycountry functional test passed" if test_passed else "pycountry lookup failed"
+            elif mod == "ffsubsync":
+                result = subprocess.run(["ffsubsync", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                output = result.stdout.decode(errors="ignore") + result.stderr.decode(errors="ignore")
+                version_match = re.search(r"\d+\.\d+(\.\d+)?", output)
+                test_passed = result.returncode == 0 and version_match is not None
+                test_msg = "ffsubsync version check passed" if test_passed else f"ffsubsync version check failed"
+            elif mod == "langdetect":
+                from langdetect import detect
+                detected = detect("This is an English sentence.")
+                test_passed = detected == "en"
+                test_msg = "langdetect functional test passed" if test_passed else f"langdetect returned '{detected}'"
+            
+            log_requirements_event(f"{display:<13} : {'working' if test_passed else 'installed, but not working'} | {test_msg}")
+            status = f"{Fore.WHITE}[{Fore.GREEN}working{Fore.WHITE}]{Style.RESET_ALL}" if test_passed else f"{Fore.WHITE}[{Fore.YELLOW}installed, but not working{Fore.WHITE}]{Style.RESET_ALL}"
+            
+        except Exception as e:
+            status = f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}"
+            log_requirements_event(f"{display:<13} : not installed | import failed: {e}")
+        
+        status_lines.append(f"{Fore.YELLOW}{display:<13}{Style.RESET_ALL} : {status}")
+    
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Fore.LIGHTYELLOW_EX}Testing ffmpeg... {Fore.LIGHTBLUE_EX}[{total}/{total}]{Style.RESET_ALL}")
+    
+    try:
+        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        ffmpeg_status = f"{Fore.WHITE}[{Fore.GREEN}working{Fore.WHITE}]{Style.RESET_ALL}"
+        log_requirements_event("ffmpeg working")
+    except Exception as e:
+        ffmpeg_status = f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}"
+        log_requirements_event(f"ffmpeg not installed: {e}")
+    
+    status_lines.append(f"{Fore.YELLOW}ffmpeg       {Style.RESET_ALL} : {ffmpeg_status}")
+    
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.CYAN}Subservient Requirements Status{Style.RESET_ALL}\n")
+    for line in status_lines:
+        print(line)
+    
+    print(f"\n{Fore.WHITE}If any are not working or installed, please check your requirements and/or the README.{Style.RESET_ALL}")
+    if ffmpeg_status == f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}":
+        print(f"\n{Fore.WHITE}Download ffmpeg from: {Fore.CYAN}https://ffmpeg.org/download.html{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}After downloading, add the {Fore.CYAN}bin{Style.RESET_ALL}{Fore.WHITE} folder to your system PATH environment variable.{Style.RESET_ALL}")
+    
+    print(f"{Fore.LIGHTBLUE_EX}A timestamped install_log is saved in the logs folder inside Subservient.{Style.RESET_ALL}")
+    log_requirements_event("--- REQUIREMENTS VERIFICATION END ---")
+    input(f"{Fore.LIGHTYELLOW_EX}Press Enter to return to the main menu...{Style.RESET_ALL}")
+    print_full_main_menu()
+def print_full_main_menu():
+    """Display the banner and full main menu with location information."""
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} This is the central script for Subservient subtitle automation.")
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} My anchor location is: {Fore.YELLOW}{Path(__file__).resolve().parent}{Style.RESET_ALL}\n")
+    print(f"{Style.DIM}When unsure how to proceed, you can consult the README file or press option '3' for guidance.{Style.RESET_ALL}")
+    print_main_menu()
+
+def main():
+    """
+    Main application loop handling user menu choices and navigation.
+    Processes user input and calls appropriate functions for each menu option.
+    """
+    print_full_main_menu()
+    while True:
+        choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+        if choice == "1":
+            while True:
+                utils.clear_and_print_ascii(BANNER_LINE)
+                print_subservient_checklist()
+                config, pause_seconds = get_config_and_pause_seconds()
+                start_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+                if start_choice == "1":
+                    from platformdirs import user_config_dir
+                    config_dir = Path(user_config_dir("Subservient"))
+                    pathfile = config_dir / "Subservient_pathfiles"
+                    extraction_path = None
+                    if pathfile.exists():
+                        lines = pathfile.read_text(encoding="utf-8").splitlines()
+                        for l in lines:
+                            if l.startswith("extraction_path="):
+                                extraction_path = l.split("=", 1)[1].strip()
+                                break
+                    if extraction_path and Path(extraction_path).exists():
+                        utils.clear_and_print_ascii(BANNER_LINE)
+                        print(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL} Launching extraction.py at: {Fore.YELLOW}{extraction_path}{Style.RESET_ALL}")
+                        print(f"\n{Style.BRIGHT}{Fore.GREEN}Extraction will start in {int(pause_seconds)} seconds...{Style.RESET_ALL}")
+                        time.sleep(pause_seconds)
+                        subprocess.run([sys.executable, extraction_path])
+                        sys.exit(0)
+                    else:
+                        print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} Could not find extraction.py path in the universal pathfile or the file does not exist.")
+                    return
+                elif start_choice == "2":
+                    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting. Please complete your setup and try again.")
+                    return
+        elif choice == "2":
+            run_subtitle_coverage_scan()
+            print_full_main_menu()
+            continue
+        elif choice == "3":
+            show_instructions()
+        elif choice == "4":
+            utils.clear_and_print_ascii(BANNER_LINE)
+            print(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL}{Fore.LIGHTYELLOW_EX} Gathering requirements...{Style.RESET_ALL}")
+            ensure_core_requirements()
+            req_path = Path(__file__).parent / 'requirements.txt'
+            utils.clear_and_print_ascii(BANNER_LINE)
+            print(f"{Fore.LIGHTYELLOW_EX}This option will (re)install and test the required packages.{Style.RESET_ALL}\n")
+            print(f"{Fore.LIGHTYELLOW_EX}Checking for ffmpeg...{Style.RESET_ALL}")
+            import shutil
+            ffmpeg_path = shutil.which("ffmpeg")
+            if ffmpeg_path:
+                try:
+                    result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True)
+                    print(f"{Fore.GREEN}ffmpeg found!{Style.RESET_ALL} Version info:")
+                    print(result.stdout.splitlines()[0])
+                except Exception as e:
+                    print(f"{Fore.RED}Error running ffmpeg: {e}{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.LIGHTRED_EX}ffmpeg is not installed or not found in your PATH.{Style.RESET_ALL}")
+                print(f"ffmpeg is a crucial package for Subservient to work properly.\nPlease see the README under '1. Installing and Configuring Subservient', step 4, for detailed installation instructions. It is strongly recommended to install ffmpeg before continuing.\n")
+            print(f"{Fore.LIGHTYELLOW_EX}\nDo you want to proceed with (re)installing and testing?{Style.RESET_ALL}")
+            print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, install and test everything")
+            print(f"  {Fore.RED}2{Style.RESET_ALL} = No, return to main menu\n")
+            sub_choice = input(f"Make a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+            if sub_choice != "1":
+                print_full_main_menu()
+                continue
+            utils.clear_and_print_ascii(BANNER_LINE)
+            print(f"{Fore.LIGHTYELLOW_EX}Installing requirements from requirements.txt...{Style.RESET_ALL}\n")
+            log_requirements_event("--- REQUIREMENTS INSTALLATION START ---")
+            try:
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', str(req_path)])
+                print(f"{Fore.GREEN}Requirements installed successfully!{Style.RESET_ALL}\n")
+                log_requirements_event("requirements.txt install: success")
+            except Exception as e:
+                print(f"{Fore.RED}Failed to install requirements: {e}{Style.RESET_ALL}\n")
+                log_requirements_event(f"requirements.txt install: failed: {e}")
+            log_requirements_event("--- REQUIREMENTS INSTALLATION END ---")
+            check_requirements_status()
+            continue
+        elif choice == "5":
+            reconstruct_config()
+        elif choice == "6":
+            utils.clear_and_print_ascii(BANNER_LINE)
+            subservient_folder = utils.get_subservient_folder()
+            readme_path = subservient_folder / 'README.md'
+            if readme_path.exists():
+                print(f"{Fore.YELLOW}Opening README.md...{Style.RESET_ALL}\n")
+                print(f"{Fore.LIGHTWHITE_EX}If the README didn't open, please find it in the Subservient folder{Style.RESET_ALL}")
+                try:
+                    os.startfile(str(readme_path))
+                except AttributeError:
+                    import platform
+                    if platform.system() == "Darwin":
+                        subprocess.run(["open", str(readme_path)])
+                    else:
+                        subprocess.run(["xdg-open", str(readme_path)])
+            else:
+                print(f"{Fore.LIGHTRED_EX}README.md not found in this folder: {Style.RESET_ALL}{readme_path}")
+            input("Press Enter to return to the main menu...")
+            print_full_main_menu()
+            continue
+        elif choice == "7":
+            print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting.")
+            return
+def import_utils():
+    """
+    Dynamically import the utils module from the registered path.
+    
+    Returns:
+        module: The loaded utils module
+        
+    Raises:
+        FileNotFoundError: If utils.py cannot be found via pathfile
+    """
+    config_dir = Path(user_config_dir("Subservient"))
+    pathfile = config_dir / "Subservient_pathfiles"
+    utils_path = None
+    if pathfile.exists():
+        with open(pathfile, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("utils_path="):
+                    utils_path = line.strip().split("=", 1)[1]
+                    break
+    if not utils_path or not Path(utils_path).exists():
+        raise FileNotFoundError("utils.py not found via Subservient_pathfiles!")
+    spec = importlib.util.spec_from_file_location("utils", utils_path)
+    utils = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(utils)
+    return utils
+
+utils = import_utils()
+
+def run_subtitle_coverage_scan():
+    """
+    Perform a subtitle coverage scan on videos in the current directory.
+    Shows which videos have subtitles for configured languages.
+    Handles errors gracefully and provides user feedback.
+    """
+    try:
+        scan_banner = f"                   {Fore.YELLOW}Subtitle Coverage Scan{Style.RESET_ALL}"
+        current_dir = Path(__file__).parent.resolve()
+        config_dir = Path(user_config_dir("Subservient"))
+        pathfile = config_dir / "Subservient_pathfiles"
+        anchor_path = current_dir
+        
+        if pathfile.exists():
+            with open(pathfile, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("subservient_anchor="):
+                        anchor_path = Path(line.split("=", 1)[1].strip())
+                        break
+        
+        languages = ['en']
+        config_path1 = anchor_path / '.config'
+        if config_path1.exists():
+            languages = utils.get_languages_from_config(config_path1)
+        else:
+            try:
+                subservient_folder = utils.get_subservient_folder()
+                config_path2 = subservient_folder / '.config'
+                if config_path2.exists():
+                    languages = utils.get_languages_from_config(config_path2)
+                else:
+                    languages = utils.get_languages_from_config(None)
+            except Exception:
+                languages = ['en']
+        
+        videos = utils.find_videos_in_directory(current_dir)
+        if not videos:
+            utils.clear_and_print_ascii(scan_banner)
+            print(f"{Fore.YELLOW}No videos found to scan in current directory.{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
+            return
+        
+        coverage_results = utils.scan_subtitle_coverage(videos, languages, show_progress=True)
+        utils.display_coverage_results(coverage_results, languages, scan_banner, return_to_menu=True)
+        
+    except Exception as e:
+        utils.clear_and_print_ascii(BANNER_LINE)
+        print(f"{Fore.RED}Error during subtitle coverage scan: {str(e)}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Make sure you have ffprobe installed and videos in the current directory.{Style.RESET_ALL}")
+        input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
+
+ensure_initial_setup()
+write_anchor_to_pathfile()
+
+if __name__ == "__main__":
+    main()
