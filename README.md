@@ -37,16 +37,11 @@
 - Perfect for users who want results, not complexity
 
 **⚡ Smart & Efficient**: 
-- Uses existing internal subs first (saves download quota)
-- Handles both single movies and entire video collections
-- Works with 50+ languages using simple language codes (`en`, `nl`, `fr`, etc.)
 - Processes TV series automatically with episode detection (Scheduled for v0.9)
-
-**🛡️ Safe & Reliable**:
+- Handles both single movies and entire video collections
+- Works with 150+ languages using simple language codes (`en`, `nl`, `fr`, etc.)
+- Uses existing internal subs first (saves download quota)
 - Never overwrites originals - creates new synchronized `.srt` files
-- Interactive prompts when manual input is needed
-- Automatic quality control with three-tier sync verification
-- Comprehensive error handling and recovery options
 
 **�🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
 
@@ -169,7 +164,10 @@ Subservient stores the anchor and file locations in a user-specific config file:
 <details>
 <summary><strong>📊 About Subtitle Coverage Scanning (Option 2)</strong></summary>
 
-Shows detailed analysis of existing subtitles in your directory:
+Works together with your preferred language setting in your `.config` file.
+E.g. if you have `NL` and `EN` specified as languages that you need, then it will check all files to see if these languages already exist or not.
+
+It will scan your library and provide you with the following markers when it's finished:
 - ✅ Complete coverage (all languages present)
 - ⚠️ Partial coverage (some languages missing)
 - ❌ No coverage (no subtitles found)
