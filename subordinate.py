@@ -378,6 +378,40 @@ run_counter= 0
     print(f"{Fore.GREEN}New .config file created at: {config_path}{Style.RESET_ALL}\n")
     input("Press Enter to return to the main menu...")
     print_full_main_menu()
+def import_utils():
+    """
+    Dynamically import the utils module from the registered path.
+    
+    Returns:
+        module: The loaded utils module
+        
+    Raises:
+        FileNotFoundError: If utils.py cannot be found via pathfile
+    """
+    config_dir = Path(user_config_dir("Subservient"))
+    pathfile = config_dir / "Subservient_pathfiles"
+    utils_path = None
+    if pathfile.exists():
+        with open(pathfile, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("utils_path="):
+                    utils_path = line.strip().split("=", 1)[1]
+                    break
+    
+    if not utils_path or not Path(utils_path).exists():
+        current_dir_utils = Path(__file__).parent / "utils.py"
+        if current_dir_utils.exists():
+            utils_path = str(current_dir_utils)
+        else:
+            raise FileNotFoundError("utils.py not found via Subservient_pathfiles or current directory!")
+    
+    spec = importlib.util.spec_from_file_location("utils", utils_path)
+    utils = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(utils)
+    return utils
+
+utils = import_utils()
+
 def ensure_initial_setup():
     """
     Verify that all required Subservient scripts are present and register their paths.
@@ -746,33 +780,6 @@ def main():
         elif choice == "7":
             print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting.")
             return
-def import_utils():
-    """
-    Dynamically import the utils module from the registered path.
-    
-    Returns:
-        module: The loaded utils module
-        
-    Raises:
-        FileNotFoundError: If utils.py cannot be found via pathfile
-    """
-    config_dir = Path(user_config_dir("Subservient"))
-    pathfile = config_dir / "Subservient_pathfiles"
-    utils_path = None
-    if pathfile.exists():
-        with open(pathfile, encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("utils_path="):
-                    utils_path = line.strip().split("=", 1)[1]
-                    break
-    if not utils_path or not Path(utils_path).exists():
-        raise FileNotFoundError("utils.py not found via Subservient_pathfiles!")
-    spec = importlib.util.spec_from_file_location("utils", utils_path)
-    utils = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(utils)
-    return utils
-
-utils = import_utils()
 
 def run_subtitle_coverage_scan():
     """
