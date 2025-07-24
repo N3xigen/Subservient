@@ -24,7 +24,7 @@
 ### 🎯 What Subservient Does For You
 
 **🔥 One-Click Processing**: Drop `subordinate.py` into any folder with videos and watch Subservient automatically:
-- 📤 **Extract** internal subtitles that are already perfectly synced
+- 📤 **Extract** internal subtitles from video files that are ready to be used
 - 🌐 **Download** missing subtitle languages from OpenSubtitles  
 - 🤖 **AI-Sync** all subtitles using advanced audio analysis
 - 🧹 **Clean up** your video files by removing unwanted subtitle tracks
