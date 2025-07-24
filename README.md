@@ -24,17 +24,10 @@
 ### 🎯 What Subservient Does For You
 
 **🔥 One-Click Processing**: Drop `subordinate.py` into any folder with videos and watch Subservient automatically:
-- 📤 **Extract** internal subtitles from video files that are ready to be used
-- 🌐 **Download** missing subtitle languages from OpenSubtitles  
-- 🤖 **AI-Sync** all subtitles using advanced audio analysis
-- 🧹 **Clean up** your video files by removing unwanted subtitle tracks
-
-**✅ Simple & Straightforward**:
-- No confusing menus or overwhelming configuration options
-- Works out-of-the-box with sensible defaults
-- Just drop the script, run it, and let it do its job
-- Uses interactive and articulate prompts when Subservient has a question for you during runtime
-- Perfect for users who want results, not complexity
+- **Extract** internal subtitles from video files that are ready to be used
+- **Download** missing subtitle languages from OpenSubtitles  
+- **AI-Sync** all subtitles using advanced audio analysis
+- **Clean up** your video files by removing unwanted subtitle tracks
 
 **⚡ Smart & Efficient**: 
 - Processes TV series automatically with episode detection (Scheduled for v0.9)
@@ -42,6 +35,13 @@
 - Works with 150+ languages using simple language codes (`en`, `nl`, `fr`, etc.)
 - Uses existing internal subs first (saves download quota)
 - Never overwrites originals - creates new synchronized `.srt` files
+  
+**✅ Simple & Straightforward**:
+- No confusing menus or overwhelming configuration options
+- Works out-of-the-box with sensible defaults
+- Just drop the script, run it, and let it do its job
+- Uses interactive and articulate prompts when Subservient has a question for you during runtime
+- Perfect for users who want results, not complexity
 
 **�🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
 
@@ -165,9 +165,9 @@ Subservient stores the anchor and file locations in a user-specific config file:
 <summary><strong>📊 About Subtitle Coverage Scanning (Option 2)</strong></summary>
 
 Works together with your preferred language setting in your `.config` file.
-E.g. if you have `NL` and `EN` specified as languages that you need, then it will check all files to see if these languages already exist or not.
+E.g. if you have `NL` and `EN` specified as languages that you need, then it will check per video file if those languages are present.
 
-It will scan your library and provide you with the following markers when it's finished:
+It will scan your library and provide you with the following markers per video file when finished:
 - ✅ Complete coverage (all languages present)
 - ⚠️ Partial coverage (some languages missing)
 - ❌ No coverage (no subtitles found)
