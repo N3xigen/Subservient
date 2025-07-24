@@ -341,15 +341,9 @@ Four main situations require your input:
 **Prompt Options:**
 - **Option 1:** 🔵 Type in a manual search term to try a different subtitle search
 - **Option 2:** 🔴 Delete the video file permanently
-- **Option 3:** 🟡 Increase global subtitle download limit (affects all languages/movies)
+- **Option 3:** 🟡 Increase global subtitle download limit (will allow more subtitle candidates to be downloaded when available)
 - **Option 4:** 🟡 Skip this video for now (can be processed again in future runs)
 - **Option 5:** 🟣 Skip this language and do not show again (adds language to permanent skip list in config)
-
-**Additional Features:**
-- Manual search allows you to test different query terms until you find working subtitles
-- Download limit increase updates .config file and restarts acquisition process
-- Language-specific skipping lets you avoid certain languages for specific videos
-- All choices include confirmation prompts to prevent accidental actions
 
 **Purpose:** Gives you complete control over what happens to videos for which no subtitles could be found, with both temporary and permanent solutions. Because sometimes we need to admit defeat gracefully ;) 
 
@@ -770,8 +764,8 @@ Subservient is actively developed with exciting new features planned! Here's wha
 
 | How to Suggest | Method | Response Time |
 |----------------|--------|---------------|
-| 🐛 **Bug Reports** | [GitHub Issues](https://github.com/yourusername/Subservient/issues) | In my sparetime (varies a lot) |
-| 💡 **Feature Requests** | [GitHub Discussions](https://github.com/yourusername/Subservient/discussions) | In my sparetime (varies a lot) |
+| 🐛 **Bug Reports** | [GitHub Issues](https://github.com/N3xigen/Subservient/issues) | In my sparetime (varies a lot) |
+| 💡 **Feature Requests** | [GitHub Discussions](https://github.com/N3xigen/Subservient/discussions) | In my sparetime (varies a lot) |
 | ☕ **VIP Suggestions** | Discord (for supporters) | Same day, possibly within minutes after your message |
 
 > 🎉 **Get Involved!**
@@ -854,8 +848,6 @@ For the complete license terms, see the [LICENSE](LICENSE) file in this reposito
 
 > � **In Simple Terms**: This is free software that will always remain free. You can use, modify, and share it, but if you distribute modified versions, they must also be open source under GPL-3.0.
 
-> 📝 **Note:** Replace `yourusername` with your actual GitHub username when publishing this repository.
-
 <br>
 
 ## ⚖️ Legal Disclaimer
@@ -877,12 +869,10 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.79-brightgreen.svg)](https://github.com/yourusername/Subservient)
-[![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/yourusername/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.79-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-
-> 📝 **Note:** Remember to update GitHub URLs with your actual repository information when publishing.
 
 *Happy subtitle processing! 🎯*
 
