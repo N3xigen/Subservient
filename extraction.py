@@ -116,7 +116,7 @@ with LOG_FILE.open('w', encoding='utf-8') as f:
 clear_and_print_ascii(BANNER_LINE)
 
 def ensure_initial_setup():
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     required_keys = [
         "subservient_anchor",
@@ -715,7 +715,7 @@ def get_video_files_for_folder(folder: Path) -> list:
                     print_and_log(f"{ext_tag()} {Fore.RED}Failed to move {f.name}: {e}{Style.RESET_ALL}")
     return [largest]
 def get_subservient_anchor():
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     if not pathfile.exists():
         print_and_log(f"\033[1;31m[ERROR]\033[0m Subservient_pathfiles not found in your user config directory. Please run subordinate.py first.")

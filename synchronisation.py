@@ -161,7 +161,7 @@ def input_and_log(prompt):
     return answer
 
 def ensure_initial_setup():
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     required_keys = ["subservient_anchor", "subordinate_path", "extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
     if not pathfile.exists():
@@ -188,7 +188,7 @@ with open(LOG_FILE, 'a+', encoding='utf-8') as f:
 clear_and_print_ascii(BANNER_LINE)
 ensure_initial_setup()
 
-pathfile = os.path.join(user_config_dir("Subservient"), "Subservient_pathfiles")
+pathfile = os.path.join(user_config_dir(), "Subservient", "Subservient_pathfiles")
 anchor_path = script_dir
 
 if os.path.exists(pathfile):

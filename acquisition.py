@@ -90,7 +90,7 @@ def print_and_log_colored(msg, color=Fore.WHITE, end='\n'):
         f.write(strip_ansi(msg) + ('' if end == '' else end))
 clear_and_print_ascii(BANNER_LINE)
 def get_subservient_anchor():
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     if not pathfile.exists():
         clear_and_print_ascii(BANNER_LINE)
@@ -1305,7 +1305,7 @@ def process_folder(folder: Path, scanned_folders: set, jwt_token: str, skipped_m
     return processed
 
 def ensure_initial_setup():
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     required_keys = [
         "subservient_anchor",

@@ -43,15 +43,15 @@ LANG_3TO2_MAP = {
 }
 
 def get_subservient_folder():
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     if pathfile.exists():
         with open(pathfile, "r", encoding="utf-8") as f:
             for line in f:
-                if line.strip().endswith("_path=") is False and "_path=" in line:
+                if line.startswith("subservient_anchor="):
                     path = line.split("=", 1)[1].strip()
                     if path:
-                        return Path(path).parent
+                        return Path(path)
     return Path(__file__).parent
 
 def clear_and_print_ascii(banner_line):

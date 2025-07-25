@@ -85,10 +85,18 @@ After downloading the Subservient folder from the GitHub repository, ensure that
 Subservient requires **Python 3.8+**. If you don't have Python:
 
 1. Download from [python.org](https://www.python.org/downloads/)
-2. Install (Windows: check "Add Python to PATH")
-3. Test with: `python --version`
+2. Install (Windows: **recommended** to install directly to `C:\Python[version]\` for easier path management)
+3. During installation, **check "Add Python to PATH"**
+4. Test with: open a terminal and test by typing `python --version`. This should show the current version.
 
-> 🚨 If `python --version` doesn't work, Python wasn't added to PATH correctly.
+> 💡 **Windows Installation Tip**: Installing to a simple path like `C:\Python[version]\` (you can shorten the folder name) makes troubleshooting much easier than the default AppData location.
+
+> 🚨 If `python --version` doesn't work, Python wasn't added to PATH correctly during install.
+> 
+> **Manual PATH Fix (Windows):**
+> Add these two folders to your system PATH (adjust path if you chose a different location):
+> - **If installed to C-drive:** `C:\Python[version]\` and `C:\Python[version]\Scripts\`
+> - **If default location:** `C:\Users\[YourUsername]\AppData\Local\Programs\Python\Python[version]\` and `C:\Users\[YourUsername]\AppData\Local\Programs\Python\Python[version]\Scripts\`
 
 <br>
 

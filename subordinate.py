@@ -2,6 +2,17 @@ import os
 import sys
 import subprocess
 
+# Import colorama early for error messages
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+except ImportError:
+    # Fallback if colorama is not installed
+    class MockColor:
+        def __getattr__(self, name):
+            return ""
+    Fore = Style = MockColor()
+
 def ensure_core_requirements():
     """
     Check if required packages are installed and offer to install missing ones.
@@ -26,7 +37,7 @@ def ensure_core_requirements():
         print("\n[Subservient] The following required packages are missing:")
         for pkg in missing:
             print(f"  - {pkg}")
-        choice = input("\nWould you like to install ALL missing packages now? [Y/n]: ").strip().lower()
+        choice = input("\nWould you like to install ALL missing packages now? [y/n]: ").strip().lower()
         if choice in ('', 'y', 'yes'):
             try:
                 subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
@@ -43,8 +54,30 @@ def ensure_core_requirements():
                 sys.exit(0)
             except Exception as e:
                 print(f"\n[ERROR] Failed to install packages: {e}\nPlease install them manually and restart the script.")
+                
+                # Check if Visual C++ Build Tools are missing on Windows
+                if os.name == 'nt':
+                    import shutil
+                    import glob
+                    cl_path = shutil.which('cl')
+                    
+                    if not cl_path:
+                        # Check if Build Tools exist but not in PATH
+                        vs_patterns = [
+                            r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                            r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+                        ]
+                        found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
+                        
+                        if not found_cl:
+                            print(f"\n{Fore.YELLOW}Note: Some Python packages require Microsoft Visual C++ Build Tools to compile.{Style.RESET_ALL}")
+                            print(f"{Fore.YELLOW}If the installation failed due to missing build tools, please install this first.{Style.RESET_ALL}")
+                            print(f"{Fore.WHITE}In the README, look for chapter: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+                            print(f"{Fore.WHITE}In there, check the 'External Tools' section for installation instructions.{Style.RESET_ALL}")
+                
                 input("\nPress Enter to exit...")
                 sys.exit(1)
+        else:
             print("\n[Subservient] Required packages are missing. Exiting.")
             input("\nPress Enter to exit...")
             sys.exit(1)
@@ -54,14 +87,12 @@ ensure_core_requirements()
 print("[Subservient] Loading imports..")
 import importlib.util
 import time
-from colorama import init, Fore, Style
 from pathlib import Path
 from platformdirs import user_config_dir
 from datetime import datetime
 import re
 import pycountry
 import requests
-init(autoreset=True)
 
 BANNER_LINE = f"                   {Fore.LIGHTRED_EX}[Phase 1/4]{Style.RESET_ALL} Subservient Set-up"
 
@@ -70,7 +101,7 @@ def write_anchor_to_pathfile():
     Write or update the subservient anchor path in the pathfile.
     Creates config directory and pathfile if they don't exist.
     """
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     config_dir.mkdir(parents=True, exist_ok=True)
     pathfile = config_dir / "Subservient_pathfiles"
     anchor_path = str(Path(__file__).resolve().parent)
@@ -96,7 +127,7 @@ def print_subservient_checklist():
     Display pre-flight checklist with current configuration and video processing settings.
     Shows mode, processing type, language settings, and other important parameters.
     """
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     anchor_path = None
     if pathfile.exists():
@@ -387,29 +418,51 @@ def import_utils():
     Raises:
         FileNotFoundError: If utils.py cannot be found via pathfile
     """
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     utils_path = None
+    
+    # Try to read utils path from pathfile
     if pathfile.exists():
-        with open(pathfile, encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("utils_path="):
-                    utils_path = line.strip().split("=", 1)[1]
-                    break
+        try:
+            with open(pathfile, encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("utils_path="):
+                        utils_path = line.strip().split("=", 1)[1]
+                        break
+        except Exception:
+            pass
     
-    if not utils_path or not Path(utils_path).exists():
-        current_dir_utils = Path(__file__).parent / "utils.py"
-        if current_dir_utils.exists():
-            utils_path = str(current_dir_utils)
-        else:
-            raise FileNotFoundError("utils.py not found via Subservient_pathfiles or current directory!")
+    if utils_path and Path(utils_path).exists():
+        try:
+            spec = importlib.util.spec_from_file_location("utils", utils_path)
+            utils = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(utils)
+            return utils
+        except Exception:
+            pass
     
-    spec = importlib.util.spec_from_file_location("utils", utils_path)
-    utils = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(utils)
-    return utils
-
-utils = import_utils()
+    current_dir_utils = Path(__file__).parent / "utils.py"
+    if current_dir_utils.exists():
+        try:
+            spec = importlib.util.spec_from_file_location("utils", str(current_dir_utils))
+            utils = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(utils)
+            return utils
+        except Exception:
+            pass
+    
+    print(f"{Fore.RED}{Style.BRIGHT}[SETUP ERROR]{Style.RESET_ALL} Cannot continue - required files are missing.\n")
+    print(f"{Fore.YELLOW}Could not locate utils.py in the expected locations:{Style.RESET_ALL}")
+    print(f"  - Pathfile location: {utils_path if utils_path else 'Not found in configuration'}")
+    print(f"  - Current directory: {current_dir_utils}")
+    print(f"\n{Fore.WHITE}To resolve this issue:{Style.RESET_ALL}")
+    print(f"  1. Ensure subordinate.py is in the main Subservient folder")
+    print(f"  2. Verify all required files are present and intact")
+    print(f"  3. Run subordinate.py from the main folder to complete setup")
+    print(f"\n{Fore.WHITE}If the problem persists, consider re-downloading Subservient from the official repository.{Style.RESET_ALL}")
+    input("\nPress Enter to exit...")
+    sys.exit(1)
 
 def ensure_initial_setup():
     """
@@ -420,7 +473,7 @@ def ensure_initial_setup():
     required_keys = ["subservient_anchor", "subordinate_path", "extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
     required_scripts = ["subordinate.py", "extraction.py", "acquisition.py", "synchronisation.py", "utils.py"]
     
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     config_dir.mkdir(parents=True, exist_ok=True)
     pathfile = config_dir / "Subservient_pathfiles"
 
@@ -438,19 +491,19 @@ def ensure_initial_setup():
     current_dir = Path(__file__).parent.resolve()
     missing = [s for s in required_scripts if not (current_dir / s).exists()]
     if missing:
-        utils.clear_and_print_ascii(BANNER_LINE)
-        print(f"{Fore.RED}{Style.BRIGHT}[ERROR]{Style.RESET_ALL} Setup cannot continue.\n")
-        print(f"{Fore.YELLOW}subordinate.py might not be in the main subservient folder, or files are missing.{Style.RESET_ALL}\n")
-        print(f"The following required scripts are missing in this folder:")
+        print(f"{Fore.RED}{Style.BRIGHT}[SETUP ERROR]{Style.RESET_ALL} Subservient failed to launch - required files are missing.\n")
+        print(f"{Fore.YELLOW}The following required scripts are missing in the current directory:{Style.RESET_ALL}")
         for s in missing:
-            print(f"  {Fore.RED}{s}{Style.RESET_ALL}")
-        print(f"\nPlease make sure missing files are present and/or move subordinate.py to the correct folder.")
-        print(f"\nWhen shit really hits the fan, you can always re-download the Subservient folder from GitHub.")
-        input("Press Enter to exit...")
+            print(f"  {Fore.RED}• {s}{Style.RESET_ALL}")
+        print(f"\n{Fore.WHITE}To resolve this issue:{Style.RESET_ALL}")
+        print(f"  1. Move subordinate.py back to the main Subservient folder")
+        print(f"  2. Ensure all required files are present and intact")
+        print(f"  3. Run subordinate.py from the main folder to complete setup")
+        print(f"\n{Fore.WHITE}If files are genuinely missing, consider re-downloading Subservient from the official repository.{Style.RESET_ALL}")
+        input("\nPress Enter to exit...")
         sys.exit(1)
     
-    utils.clear_and_print_ascii(BANNER_LINE)
-    print(f"{Fore.GREEN}{Style.BRIGHT}All required scripts found!{Style.RESET_ALL}\n")
+    print(f"\n{Fore.GREEN}{Style.BRIGHT}All required scripts found!{Style.RESET_ALL}\n")
     print(f"{Fore.CYAN}Registering script paths and setting up Subservient...{Style.RESET_ALL}\n")
     
     with open(pathfile, "w", encoding="utf-8") as f:
@@ -471,6 +524,7 @@ def ensure_initial_setup():
         print(f"{Fore.RED}{Style.BRIGHT}[ERROR]{Style.RESET_ALL} Pathfile is incomplete or invalid after setup. Please check your files and try again.")
         sys.exit(1)
 ensure_initial_setup()
+utils = import_utils()
 write_anchor_to_pathfile()
 def get_log_path():
     """
@@ -480,9 +534,21 @@ def get_log_path():
     Returns:
         Path: Path to the current log file
     """
-    # Use existing utils function to get the main Subservient folder
-    subservient_folder = utils.get_subservient_folder()
-    logs_dir = subservient_folder / "logs"
+    config_dir = Path(user_config_dir()) / "Subservient"
+    pathfile = config_dir / "Subservient_pathfiles"
+    
+    subservient_anchor = None
+    if pathfile.exists():
+        with open(pathfile, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("subservient_anchor="):
+                    subservient_anchor = Path(line.split("=", 1)[1].strip())
+                    break
+    
+    if not subservient_anchor:
+        subservient_anchor = Path(__file__).parent.resolve()
+    
+    logs_dir = subservient_anchor / "logs"
     logs_dir.mkdir(exist_ok=True)
     log_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     return logs_dir / f"install_log_{log_timestamp}.txt"
@@ -505,7 +571,7 @@ def get_config_and_pause_seconds():
     Returns:
         tuple: (config dict, pause_seconds float)
     """
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     anchor_path = Path(__file__).parent.resolve()
     
@@ -539,13 +605,12 @@ def check_requirements_status():
     import pycountry
     import requests
     import re
-    
     config, pause_seconds = get_config_and_pause_seconds()
     status_lines = []
     log_requirements_event("--- REQUIREMENTS VERIFICATION START ---")
     
     from platformdirs import user_config_dir
-    config_dir = Path(user_config_dir("Subservient"))
+    config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = Path(config_dir) / "Subservient_pathfiles"
     anchor_path = Path(__file__).parent
     
@@ -838,7 +903,7 @@ def main():
                         continue
                     
                     from platformdirs import user_config_dir
-                    config_dir = Path(user_config_dir("Subservient"))
+                    config_dir = Path(user_config_dir()) / "Subservient"
                     pathfile = config_dir / "Subservient_pathfiles"
                     extraction_path = None
                     if pathfile.exists():
@@ -958,7 +1023,7 @@ def run_subtitle_coverage_scan():
     try:
         scan_banner = f"                   {Fore.YELLOW}Subtitle Coverage Scan{Style.RESET_ALL}"
         current_dir = Path(__file__).parent.resolve()
-        config_dir = Path(user_config_dir("Subservient"))
+        config_dir = Path(user_config_dir()) / "Subservient"
         pathfile = config_dir / "Subservient_pathfiles"
         anchor_path = current_dir
         
@@ -1001,6 +1066,7 @@ def run_subtitle_coverage_scan():
         input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
 
 ensure_initial_setup()
+utils = import_utils()
 write_anchor_to_pathfile()
 
 if __name__ == "__main__":
