@@ -51,7 +51,9 @@ def get_subservient_folder():
                 if line.startswith("subservient_anchor="):
                     path = line.split("=", 1)[1].strip()
                     if path:
-                        return Path(path)
+                        candidate_path = Path(path)
+                        if candidate_path.exists() and (candidate_path / '.config').exists():
+                            return candidate_path
     return Path(__file__).parent
 
 def clear_and_print_ascii(banner_line):
