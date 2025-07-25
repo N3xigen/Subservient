@@ -64,7 +64,6 @@ import requests
 init(autoreset=True)
 
 BANNER_LINE = f"                   {Fore.LIGHTRED_EX}[Phase 1/4]{Style.RESET_ALL} Subservient Set-up"
-LOGS_DIR = Path(__file__).parent / "logs"
 
 def write_anchor_to_pathfile():
     """
@@ -476,13 +475,17 @@ write_anchor_to_pathfile()
 def get_log_path():
     """
     Create logs directory if needed and return the log file path.
+    Uses the main Subservient folder for logs, not the local subordinate.py location.
     
     Returns:
         Path: Path to the current log file
     """
-    LOGS_DIR.mkdir(exist_ok=True)
+    # Use existing utils function to get the main Subservient folder
+    subservient_folder = utils.get_subservient_folder()
+    logs_dir = subservient_folder / "logs"
+    logs_dir.mkdir(exist_ok=True)
     log_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    return LOGS_DIR / f"install_log_{log_timestamp}.txt"
+    return logs_dir / f"install_log_{log_timestamp}.txt"
 
 def log_requirements_event(message):
     """
@@ -572,7 +575,7 @@ def check_requirements_status():
         ("langdetect", "langdetect"),
     ]
     
-    total = len(required) + 1
+    total = len(required) + 3 
     for idx, (mod, display) in enumerate(required, 1):
         utils.clear_and_print_ascii(BANNER_LINE)
         print(f"{Fore.LIGHTYELLOW_EX}Subservient is currently testing {display}... {Fore.LIGHTBLUE_EX}[{idx}/{total}]{Style.RESET_ALL}")
@@ -637,7 +640,7 @@ def check_requirements_status():
         status_lines.append(f"{Fore.YELLOW}{display:<13}{Style.RESET_ALL} : {status}")
     
     utils.clear_and_print_ascii(BANNER_LINE)
-    print(f"{Fore.LIGHTYELLOW_EX}Testing ffmpeg... {Fore.LIGHTBLUE_EX}[{total}/{total}]{Style.RESET_ALL}")
+    print(f"{Fore.LIGHTYELLOW_EX}Testing ffmpeg... {Fore.LIGHTBLUE_EX}[{total-2}/{total}]{Style.RESET_ALL}")
     
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
@@ -650,19 +653,162 @@ def check_requirements_status():
     status_lines.append(f"{Fore.YELLOW}ffmpeg       {Style.RESET_ALL} : {ffmpeg_status}")
     
     utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Fore.LIGHTYELLOW_EX}Testing MKVToolNix (mkvmerge)... {Fore.LIGHTBLUE_EX}[{total-1}/{total}]{Style.RESET_ALL}")
+    
+    try:
+        result = subprocess.run(["mkvmerge", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        mkvmerge_status = f"{Fore.WHITE}[{Fore.GREEN}working{Fore.WHITE}]{Style.RESET_ALL}"
+        log_requirements_event("MKVToolNix (mkvmerge) working")
+    except Exception as e:
+        mkvmerge_status = f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}"
+        log_requirements_event(f"MKVToolNix (mkvmerge) not installed: {e}")
+    
+    status_lines.append(f"{Fore.YELLOW}MKVToolNix    {Style.RESET_ALL} : {mkvmerge_status}")
+    
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Fore.LIGHTYELLOW_EX}Testing Microsoft Visual C++ Build Tools... {Fore.LIGHTBLUE_EX}[{total}/{total}]{Style.RESET_ALL}")
+    
+    if os.name == 'nt':
+        try:
+            import shutil
+            cl_path = shutil.which('cl')
+            
+            if cl_path:
+                try:
+                    result = subprocess.run(['cl'], capture_output=True, text=True, timeout=5)
+                    version_info = result.stderr
+                    
+                    if 'Microsoft' in version_info:
+                        if any(v in version_info for v in ['19.', '18.', '17.', '16.', '15.', '14.']):
+                            msvc_status = f"{Fore.WHITE}[{Fore.GREEN}working{Fore.WHITE}]{Style.RESET_ALL}"
+                            log_requirements_event("Microsoft Visual C++ Build Tools working")
+                        else:
+                            msvc_status = f"{Fore.WHITE}[{Fore.YELLOW}old version{Fore.WHITE}]{Style.RESET_ALL}"
+                            log_requirements_event("Microsoft Visual C++ Build Tools - old version detected")
+                    else:
+                        msvc_status = f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not working{Fore.WHITE}]{Style.RESET_ALL}"
+                        log_requirements_event("Microsoft Visual C++ Build Tools - cl.exe found but not working")
+                except Exception as e:
+                    msvc_status = f"{Fore.WHITE}[{Fore.YELLOW}found but error{Fore.WHITE}]{Style.RESET_ALL}"
+                    log_requirements_event(f"Microsoft Visual C++ Build Tools - found but error: {e}")
+            else:
+                import glob
+                vs_patterns = [
+                    r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
+                ]
+                
+                found_cl = False
+                for pattern in vs_patterns:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        found_cl = True
+                        break
+                
+                if found_cl:
+                    msvc_status = f"{Fore.WHITE}[{Fore.YELLOW}found but not in PATH{Fore.WHITE}]{Style.RESET_ALL}"
+                    log_requirements_event("Microsoft Visual C++ Build Tools - found but not in PATH")
+                else:
+                    msvc_status = f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}"
+                    log_requirements_event("Microsoft Visual C++ Build Tools not found")
+        except Exception as e:
+            msvc_status = f"{Fore.WHITE}[{Fore.LIGHTRED_EX}check failed{Fore.WHITE}]{Style.RESET_ALL}"
+            log_requirements_event(f"Microsoft Visual C++ Build Tools check failed: {e}")
+    else:
+        msvc_status = f"{Fore.WHITE}[{Fore.CYAN}not needed (non-Windows){Fore.WHITE}]{Style.RESET_ALL}"
+        log_requirements_event("Microsoft Visual C++ Build Tools - not needed on non-Windows system")
+    
+    status_lines.append(f"{Fore.YELLOW}MSVC Build Tools{Style.RESET_ALL} : {msvc_status}")
+    
+    utils.clear_and_print_ascii(BANNER_LINE)
     print(f"{Style.BRIGHT}{Fore.CYAN}Subservient Requirements Status{Style.RESET_ALL}\n")
     for line in status_lines:
         print(line)
     
-    print(f"\n{Fore.WHITE}If any are not working or installed, please check your requirements and/or the README.{Style.RESET_ALL}")
+    print(f"\n{Fore.WHITE}If any are not working or installed, please check the README for installation instructions.{Style.RESET_ALL}")
+    
+    # Check if any external tools are missing and provide README reference
+    missing_external_tools = []
     if ffmpeg_status == f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}":
-        print(f"\n{Fore.WHITE}Download ffmpeg from: {Fore.CYAN}https://ffmpeg.org/download.html{Style.RESET_ALL}")
-        print(f"{Fore.WHITE}After downloading, add the {Fore.CYAN}bin{Style.RESET_ALL}{Fore.WHITE} folder to your system PATH environment variable.{Style.RESET_ALL}")
+        missing_external_tools.append("ffmpeg")
+    if mkvmerge_status == f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}":
+        missing_external_tools.append("MKVToolNix")
+    if os.name == 'nt' and any(status in str(msvc_status) for status in ['not installed', 'check failed']):
+        missing_external_tools.append("Microsoft Visual C++ Build Tools")
+    
+    if missing_external_tools:
+        print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}You can open the README from the main menu (option 6) or simply double click the readme in the main folder.{Style.RESET_ALL}")
     
     print(f"{Fore.LIGHTBLUE_EX}A timestamped install_log is saved in the logs folder inside Subservient.{Style.RESET_ALL}")
     log_requirements_event("--- REQUIREMENTS VERIFICATION END ---")
     input(f"{Fore.LIGHTYELLOW_EX}Press Enter to return to the main menu...{Style.RESET_ALL}")
     print_full_main_menu()
+def quick_requirements_check():
+    """
+    Perform a quick check of essential requirements before launching extraction.
+    Returns True if all essential tools are available, False otherwise.
+    """
+    import shutil
+    import glob
+    
+    essential_tools = {
+        'ffmpeg': 'ffmpeg',
+        'mkvmerge': 'MKVToolNix',
+        'ffsubsync': 'ffsubsync'
+    }
+    
+    missing_tools = []
+    tool_status = []
+    
+    for tool, display_name in essential_tools.items():
+        if not shutil.which(tool):
+            missing_tools.append(display_name)
+        else:
+            tool_status.append(f"{Fore.GREEN}{display_name} found!{Style.RESET_ALL}")
+    
+    # Check Build Tools on Windows
+    if os.name == 'nt':
+        cl_path = shutil.which('cl')
+        if cl_path:
+            tool_status.append(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL}")
+        else:
+            # Check if Build Tools exist but not in PATH
+            vs_patterns = [
+                r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+            ]
+            found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
+            
+            if found_cl:
+                tool_status.append(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL} {Fore.WHITE}(not in PATH){Style.RESET_ALL}")
+            else:
+                missing_tools.append("Microsoft Visual C++ Build Tools")
+    
+    # Show status for found tools
+    if tool_status:
+        print(f"{Fore.LIGHTYELLOW_EX}Checking for external tools...{Style.RESET_ALL}")
+        for status in tool_status:
+            print(status)
+    
+    if missing_tools:
+        utils.clear_and_print_ascii(BANNER_LINE)
+        print(f"{Fore.RED}{Style.BRIGHT}[PRE-FLIGHT CHECK FAILED]{Style.RESET_ALL}\n")
+        print(f"{Fore.YELLOW}The following essential tools are missing:{Style.RESET_ALL}")
+        for tool in missing_tools:
+            print(f"  - {Fore.RED}{tool}{Style.RESET_ALL}")
+        print(f"\n{Fore.LIGHTRED_EX}Subservient cannot start without these tools!{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}For detailed installation instructions, please see the README file.{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}You can open the README from the main menu (option 6) or simply double click the readme in the main folder.{Style.RESET_ALL}")
+        input(f"\n{Fore.YELLOW}Press Enter to exit Subservient...{Style.RESET_ALL} ")
+        sys.exit(1)
+        return False
+    
+    return True
+
 def print_full_main_menu():
     """Display the banner and full main menu with location information."""
     utils.clear_and_print_ascii(BANNER_LINE)
@@ -686,6 +832,11 @@ def main():
                 config, pause_seconds = get_config_and_pause_seconds()
                 start_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
                 if start_choice == "1":
+                    # Perform quick requirements check before launching
+                    if not quick_requirements_check():
+                        print_full_main_menu()
+                        continue
+                    
                     from platformdirs import user_config_dir
                     config_dir = Path(user_config_dir("Subservient"))
                     pathfile = config_dir / "Subservient_pathfiles"
@@ -698,6 +849,7 @@ def main():
                                 break
                     if extraction_path and Path(extraction_path).exists():
                         utils.clear_and_print_ascii(BANNER_LINE)
+                        print(f"{Style.BRIGHT}{Fore.GREEN}[PRE-FLIGHT CHECK PASSED]{Style.RESET_ALL}")
                         print(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL} Launching extraction.py at: {Fore.YELLOW}{extraction_path}{Style.RESET_ALL}")
                         print(f"\n{Style.BRIGHT}{Fore.GREEN}Extraction will start in {int(pause_seconds)} seconds...{Style.RESET_ALL}")
                         time.sleep(pause_seconds)
@@ -722,19 +874,35 @@ def main():
             req_path = Path(__file__).parent / 'requirements.txt'
             utils.clear_and_print_ascii(BANNER_LINE)
             print(f"{Fore.LIGHTYELLOW_EX}This option will (re)install and test the required packages.{Style.RESET_ALL}\n")
-            print(f"{Fore.LIGHTYELLOW_EX}Checking for ffmpeg...{Style.RESET_ALL}")
+            print(f"{Fore.LIGHTYELLOW_EX}Checking for external tools...{Style.RESET_ALL}")
             import shutil
             ffmpeg_path = shutil.which("ffmpeg")
+            mkvmerge_path = shutil.which("mkvmerge")
+            
             if ffmpeg_path:
                 try:
                     result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True)
-                    print(f"{Fore.GREEN}ffmpeg found!{Style.RESET_ALL} Version info:")
-                    print(result.stdout.splitlines()[0])
+                    print(f"{Fore.GREEN}ffmpeg found!{Style.RESET_ALL}")
                 except Exception as e:
                     print(f"{Fore.RED}Error running ffmpeg: {e}{Style.RESET_ALL}")
             else:
                 print(f"\n{Fore.LIGHTRED_EX}ffmpeg is not installed or not found in your PATH.{Style.RESET_ALL}")
-                print(f"ffmpeg is a crucial package for Subservient to work properly.\nPlease see the README under '1. Installing and Configuring Subservient', step 4, for detailed installation instructions. It is strongly recommended to install ffmpeg before continuing.\n")
+                print(f"ffmpeg is a crucial tool for Subservient to work properly.")
+            
+            if mkvmerge_path:
+                try:
+                    result = subprocess.run([mkvmerge_path, "--version"], capture_output=True, text=True)
+                    print(f"{Fore.GREEN}MKVToolNix (mkvmerge) found!{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.RED}Error running mkvmerge: {e}{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.LIGHTRED_EX}MKVToolNix (mkvmerge) is not installed or not found in your PATH.{Style.RESET_ALL}")
+                print(f"MKVToolNix is required for extracting subtitles from MKV files.")
+            
+            if not ffmpeg_path or not mkvmerge_path:
+                print(f"\n{Fore.WHITE}For detailed installation instructions, please see the README file.{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}You can also use option '6' from the main menu to open the README directly.{Style.RESET_ALL}")
             print(f"{Fore.LIGHTYELLOW_EX}\nDo you want to proceed with (re)installing and testing?{Style.RESET_ALL}")
             print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, install and test everything")
             print(f"  {Fore.RED}2{Style.RESET_ALL} = No, return to main menu\n")

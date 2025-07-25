@@ -43,18 +43,18 @@
 - Uses interactive and articulate prompts when Subservient has a question for you during runtime
 - Perfect for users who want results, not complexity
 
-**�🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
+**🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
 
 <br>
 
 ## 📋 Table of Contents
 1. [🔧 Installing and Configuring Subservient](#-installing-and-configuring-subservient)
 2. [🎯 Using Subservient](#-using-subservient)
-3. [⚙️ How Subservient Works: The Four-Phase Automation Process](#️-how-subservient-works-the-four-phase-automation-process)
+3. [⚙️ How Subservient Works: The Four-Phase Automation Process](#️-how-subservient-works-four-phase-automation)
 4. [🔍 Troubleshooting Common Issues](#-troubleshooting-common-issues)
 5. [❓ Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
 6. [📚 Changelog](#-changelog)
-7. [� Future Updates & Roadmap](#-future-updates--roadmap)
+7. [🚀 Future Updates & Roadmap](#-future-updates--roadmap)
 8. [💝🎉 Support & Donations](#-support--donations)
 9. [📄 License](#-license)
 
@@ -62,7 +62,7 @@
 
 ## 🔧 INSTALLING AND CONFIGURING SUBSERVIENT
 
-After downloading the Subservient folder from the Github repository, ensure that **all required files** are present in the same folder. 
+After downloading the Subservient folder from the GitHub repository, ensure that **all required files** are present in the same folder. 
 
 ### 📁 Required Files
 
@@ -105,6 +105,8 @@ During initial setup:
 | 📦 | Check for essential Python packages | Auto-install if missing |
 | ⚓ | Create anchor point and pathfiles | Saves to system config |
 | ✅ | Verify installation | Shows confirmation |
+
+> ⚠️ **Windows Users:** If package installation fails during this step, you may need Microsoft Visual C++ Build Tools. See [Step 4](#-step-4-install--verify-requirements) for installation instructions.
 
 <br>
 <details>
@@ -191,16 +193,52 @@ Select menu option (4) to install Python packages:
 | `pycountry` | Language code conversion |
 | `tqdm` | Progress bars |
 
-**🎬 FFmpeg is Required:** Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH.
+#### 🛠️ External Tools Required
+
+Subservient requires three external tools to function properly:
+
+**🎬 FFmpeg** 
+- **Purpose:** Audio/video processing and subtitle extraction
+- **Download:** [ffmpeg.org](https://ffmpeg.org/download.html)
+- **Installation:** Extract and add the `bin` folder to your system PATH
+- **Test:** Open Command Prompt and run: `ffmpeg -version`
+- **Expected:** Should show FFmpeg version and configuration info
+
+**📁 MKVToolNix**
+- **Purpose:** Extract subtitles from MKV video files  
+- **Download:** [mkvtoolnix.download](https://mkvtoolnix.download/downloads.html) (Look for your OS at the top and go for the non-portable version to be safe)
+- **Installation:** Install normally - **remember the installation folder location**
+- **Test:** Open Command Prompt and run: `mkvmerge --version`
+- **Expected:** Should show MKVToolNix version info
+
+- **PATH issue:** If `mkvmerge --version` fails on Windows:
+  - Find your MKVToolNix installation folder (usually `C:\Program Files\MKVToolNix` or `C:\Program Files (x86)\MKVToolNix`)
+  - Add this folder to your system PATH environment variable
+  - **Windows:** Search "Environment Variables" → Edit System Environment Variables → Environment Variables → Select "Path" under System Variables → Edit → New → Add your MKVToolNix folder path → OK
+  - **Alternative:** Reinstall MKVToolNix and choose "Add to PATH" if the option appears during installation
+
+**🔧 Microsoft Visual C++ Build Tools** (Windows only) - Linux and macOS can run this natively
+- **Purpose:** Required for compiling Python packages with native code
+- **Download:** [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (click on 'Download Build Tools')
+- During installation, you will only need to select `C++ Build Tools` and then start installing
+
+If you encountered package installation failures during [Step 2](#-step-2-initial-setup), retry the setup after installing Build Tools.
+If it still gives errors, then add `cl.exe` to PATH (see below)
+
+- **CL issue:** If `cl` command fails:
+  - Find `cl.exe`, which is usually located in `C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\[version]\bin\Hostx64\x64\`
+  - Add this path to your system PATH environment variable
+- **Test:** Open Command Prompt and run: `cl`
+- **Expected:** Should show Microsoft compiler version info
 
 > 🚨 **If packages are not working**
 > 
-> If any package is not working or not installed, then that most likely means something went wrong during the Pip install phase. Check the install_log inside of the logs folder for more information. Also make sure that Subservient has the required privilege to install and run scripts. You can also try installing the requirements again to see if that works. ChatGPT is also excellent at solving Python package issues.
+> If any package is not working or not installed, that most likely means something went wrong during the pip install phase. Check the install_log inside the logs folder for more information. Also make sure that Subservient has the required privileges to install and run scripts. You can also try installing the requirements again to see if that works. AI assistants like ChatGPT are also excellent at solving Python package issues.
 
-You can always try running Subservient anyway to see if it works, but it's about as likely as a cactus winning a wet T-shirt contest in Alaska. Please check my GitHub page for known issues or post an issue when applicable. 
+You can always try running Subservient anyway to see if it works, but it's about as likely as a cactus winning a wet T-shirt contest in Alaska. Please check the GitHub page for known issues or create a new issue when applicable. 
 
 **💝 Support Note:**
-Limited support available via GitHub issues. For faster Discord support, consider [supporting via Buy Me a Coffee](https://buymeacoffee.com/nexigen).
+Limited support is available via GitHub issues. For faster, more personalized Discord support, consider [supporting via Buy Me a Coffee](https://buymeacoffee.com/nexigen).
 
 ### ⚙️ Step 5: Configuration
 
@@ -308,7 +346,7 @@ Move `subordinate.py` to where you want to process videos, then run it:
 
 > ⚠️ **Movement Rules:** Use cut+paste (Ctrl+X+V), NOT copy+paste. Multiple copies will confuse Subservient.
 
-### � Running the Process
+### 🎯 Running the Process
 
 1. Run `subordinate.py` → Choose option 1 → Read checklist → Confirm
 2. Subservient processes automatically based on `.config` settings
@@ -486,7 +524,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 🐍 Python Issues
 
 <details>
-<summary>1. <strong>🚫 Python Not Found / Incorrect Version</strong></summary>
+<summary>1. <strong>Python Not Found / Incorrect Version</strong></summary>
 
 **💥 Symptom:** Running `python --version` shows an error or an older version (<3.8).
 
@@ -500,7 +538,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 📁 File Structure Issues
 
 <details>
-<summary>2. <strong>📂 Missing Files or Incorrect Folder Structure</strong></summary>
+<summary>2. <strong>Missing Files or Incorrect Folder Structure</strong></summary>
 
 **💥 Symptom:** Errors about missing files or modules when running Subservient.
 
@@ -512,7 +550,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 </details>
 
 <details>
-<summary>3. <strong>🔒 Permission Errors</strong></summary>
+<summary>3. <strong>Permission Errors</strong></summary>
 
 **💥 Symptom:** Errors about not being able to access or modify files/folders.
 
@@ -526,21 +564,57 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 📦 Dependency Issues
 
 <details>
-<summary>4. <strong>🔧 Dependency Installation Issues</strong></summary>
+<summary>4. <strong>Package Installation Issues</strong></summary>
 
-**💥 Symptom:** Errors when Subservient tries to install Python packages or ffmpeg.
+**💥 Symptom:** Errors when Subservient tries to install Python packages
 
 **✅ Solution:** 
 - Install packages manually: `pip install <package>` (e.g., `pip install requests`)
-- For ffmpeg: Download from [ffmpeg.org](https://ffmpeg.org/download.html) (the multimedia Swiss Army knife)
-- Ensure ffmpeg's `bin` folder is in your system PATH
+
+</details>
+
+<details>
+<summary>5. <strong>FFmpeg Not Found or Not Working</strong></summary>
+
+**💥 Symptom:** Errors about `ffmpeg` command not found or FFmpeg-related failures.
+
+**✅ Solution:** 
+- FFmpeg is required for audio/video processing
+- See [Step 4: Install & Verify Requirements](#-step-4-install--verify-requirements) for detailed installation instructions
+
+</details>
+
+<details>
+<summary>6. <strong>MKVToolNix Not Found</strong></summary>
+
+**💥 Symptom:** Errors about `mkvmerge` command not found or MKV extraction failures.
+
+**✅ Solution:** 
+- MKVToolNix is required for extracting subtitles from MKV files
+- See [Step 4: Install & Verify Requirements](#-step-4-install--verify-requirements) for detailed installation instructions
+- **If still not found after installation:** MKVToolNix may not have been added to PATH automatically
+  - Find your installation folder (usually `C:\Program Files\MKVToolNix`)
+  - Add this folder to your system PATH environment variable
+  - **Windows PATH Guide:** Search "Environment Variables" → Edit System Environment Variables → Environment Variables → Select "Path" under System Variables → Edit → New → Add your MKVToolNix folder path → OK
+  - Restart Command Prompt and test with `mkvmerge --version`
+
+</details>
+
+<details>
+<summary>7. <strong>Microsoft Visual C++ Runtime Error</strong></summary>
+
+**💥 Symptom:** Error messages about missing Microsoft Visual C++ Redistributable or version 14.0 or higher required.
+
+**✅ Solution:** 
+- Microsoft Visual C++ Build Tools are required for compiling Python packages
+- See [Step 4: Install & Verify Requirements](#-step-4-install--verify-requirements) for detailed installation instructions
 
 </details>
 
 ### 🌐 API Issues
 
 <details>
-<summary>5. <strong>🔑 OpenSubtitles API Errors</strong></summary>
+<summary>8. <strong>OpenSubtitles API Errors</strong></summary>
 
 **💥 Symptom:** Errors related to API key, username, or password.
 
@@ -553,7 +627,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 </details>
 
 <details>
-<summary>6. <strong>🌐 Network Issues</strong></summary>
+<summary>9. <strong>Network Issues</strong></summary>
 
 **💥 Symptom:** Unable to connect to internet or OpenSubtitles API.
 
@@ -567,7 +641,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 🚀 Runtime Issues
 
 <details>
-<summary>7. <strong>📍 File Not Found / Incorrect File Paths</strong></summary>
+<summary>10. <strong>File Not Found / Incorrect File Paths</strong></summary>
 
 **💥 Symptom:** Errors about files not being found during processing.
 
@@ -579,27 +653,36 @@ Here are some common issues and solutions to help you get Subservient up and run
 **🔧 If Issues Persist:**
 1. **Re-anchor Setup:** Move `subordinate.py` back to the main Subservient folder and run it once to trigger initial setup
 2. **Manual Reset:** If problems continue, manually delete the `Subservient_pathfiles` directory and rerun `subordinate.py` in the Subservient folder
-3. **Fresh Start:** Backup the .config and re-download Subservient from Github and replace your .config file. Then meticulously follow the installation setup at the top of this Readme.
+3. **Fresh Start:** Backup the .config and re-download Subservient from GitHub and replace your .config file. Then meticulously follow the installation setup at the top of this README.
 
 </details>
 
 <details>
-<summary>8. <strong>💻 Subservient Crashes or Freezes</strong></summary>
+<summary>11. <strong>Subservient Crashes or Disappears Suddenly</strong></summary>
 
-**💥 Symptom:** Program stops responding or crashes during execution.
+**💥 Symptom:** Program closes unexpectedly without showing error messages, or freezes during execution.
 
 **✅ Solution:** 
-- Ensure sufficient free memory
-- Close unnecessary programs
-- Run in terminal/command prompt to see error messages
-- Please create an issue in the Github repository so that I can review it when I'm working on Subservient
+1. **Run from Terminal/Command Prompt** to see error messages:
+   - **Windows:** Open `cmd.exe`, drag `subordinate.py` into the window, press Enter
+   - **Linux/macOS:** Open terminal, drag `subordinate.py` into the window, press Enter
+   - This prevents Subservient from closing automatically and shows error details
+
+2. **Basic Troubleshooting:**
+   - Ensure sufficient free memory (at least 2GB RAM available)
+   - Close unnecessary programs
+   - Check if antivirus software is interfering
+
+3. **Get Help:**
+   - If you can't solve the error: create an issue on [GitHub Issues](https://github.com/N3xigen/Subservient/issues) with the error message
+   - BMAC supporters can contact me directly on Discord for faster support
 
 </details>
 
 ### 🎯 User Error Issues
 
 <details>
-<summary>9. <strong>📦 "Package Requirements Error" when running Subservient for the first time</strong></summary>
+<summary>12. <strong>"Package Requirements Error" when running Subservient for the first time</strong></summary>
 
 **💥 Symptom:** Missing packages error when running `extraction.py`, `acquisition.py`, or `synchronisation.py` directly.
 
@@ -611,7 +694,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 </details>
 
 <details>
-<summary>10. <strong>⚙️ Initial Setup Not Complete Errors</strong></summary>
+<summary>13. <strong>Initial Setup Not Complete Errors</strong></summary>
 
 **💥 Symptom:** Scripts report incomplete setup, even after running `subordinate.py`.
 
@@ -626,7 +709,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 > 🆘 **Need More Help?**
 > 
 > If you encounter issues not covered here:
-> - 📚 Check the [Subservient GitHub repository](https://github.com/yourusername/Subservient)
+> - 📚 Check the [Subservient GitHub repository](https://github.com/N3xigen/Subservient)
 > - 🐛 Open a new issue with detailed information
 > - 💬 Direct support available through Discord for supporters
 
@@ -637,14 +720,14 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 🔧 Installation & Setup
 
 <details>
-<summary>1. <strong>🔄 Do I need to install Python and dependencies every time?</strong></summary>
+<summary>1. <strong>Do I need to install Python and dependencies every time?</strong></summary>
 
 **Answer:** No, you only need to install Python and the required dependencies (packages and ffmpeg) once. Subservient will remember these settings and use them for future runs on the device used for installing.
 
 </details>
 
 <details>
-<summary>2. <strong>🍎 Can I use Subservient on macOS/Linux?</strong></summary>
+<summary>2. <strong>Can I use Subservient on macOS/Linux?</strong></summary>
 
 **Answer:** Yes, Subservient is cross-platform and works on Windows, macOS, and Linux. The installation and setup process is similar on all platforms
 
@@ -655,14 +738,14 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 🔐 Credentials & API
 
 <details>
-<summary>3. <strong>🔑 Why do I need OpenSubtitles credentials?</strong></summary>
+<summary>3. <strong>Why do I need OpenSubtitles credentials?</strong></summary>
 
 **Answer:** Subservient uses your OpenSubtitles credentials to access the OpenSubtitles API, required for searching and downloading subtitles. Your credentials are stored locally and are securely handled by OpenSubtitles.
 
 </details>
 
 <details>
-<summary>4. <strong>🆓 What if I don't have an OpenSubtitles account?</strong></summary>
+<summary>4. <strong>What if I don't have an OpenSubtitles account?</strong></summary>
 
 **Answer:** You can create a free OpenSubtitles account on their website. Free accounts have limitations (download limits), but are sufficient for testing and light usage. For heavier usage, consider upgrading to VIP.
 
@@ -671,14 +754,14 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### ⚙️ Configuration & Usage
 
 <details>
-<summary>5. <strong>🎨 Can I customize subtitle languages and settings?</strong></summary>
+<summary>5. <strong>Can I customize subtitle languages and settings?</strong></summary>
 
 **Answer:** Yes, you can customize subtitle languages, file handling options, and other settings in the `.config` file. Subservient also provides interactive prompts to guide you through configuration.
 
 </details>
 
 <details>
-<summary>6. <strong>📺 How does Subservient handle TV series?</strong></summary>
+<summary>6. <strong>How does Subservient handle TV series?</strong></summary>
 
 **Answer:** Subservient can automatically detect and process TV series with multiple episodes, as long as they follow consistent naming (e.g., S01E01, S01E02). Set `series_mode=true` in your config for series processing.
 
@@ -687,14 +770,14 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 🛠️ Troubleshooting
 
 <details>
-<summary>7. <strong>❌ What if Subservient fails to find subtitles?</strong></summary>
+<summary>7. <strong>What if Subservient fails to find subtitles?</strong></summary>
 
 **Answer:** Subservient handles errors and missing subtitles gracefully. It will log issues and prompt for input when necessary. Subservient prompts you to manually search for subtitles or adjust settings in the `.config` file (it's surprisingly polite about failure).
 
 </details>
 
 <details>
-<summary>8. <strong>📊 Is there a download limit for subtitles?</strong></summary>
+<summary>8. <strong>Is there a download limit for subtitles?</strong></summary>
 
 **Answer:** Subservient has no hard limit, but OpenSubtitles accounts do:
 - 🆓 Free (Dev Mode): ~100 downloads/day
@@ -706,17 +789,17 @@ Here are some common issues and solutions to help you get Subservient up and run
 ### 📜 Legal & Support
 
 <details>
-<summary>9. <strong>⚖️ Can I download subtitles for copyrighted content?</strong></summary>
+<summary>9. <strong>Can I download subtitles for copyrighted content?</strong></summary>
 
 **Answer:** Subservient can download subtitles for all content available on OpenSubtitles, which is generally a huge number of videos. However, you should only use it for content you own or have rights to use subtitles for. Please refer to the legal disclaimer near the bottom of the Readme file.
 
 </details>
 
 <details>
-<summary>10. <strong>🆘 Where can I get help and support?</strong></summary>
+<summary>10. <strong>Where can I get help and support?</strong></summary>
 
 **Answer:** 
-- 📚 Check the [Subservient GitHub repository](https://github.com/yourusername/Subservient) for documentation and issues
+- 📚 Check the [Subservient GitHub repository](https://github.com/N3xigen/Subservient) for documentation and issues
 - 🐛 Open new issues for specific problems
 - 💝 Direct support via Discord for supporters ([Buy Me a Coffee](https://buymeacoffee.com/nexigen))
 
@@ -739,7 +822,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 <br>
 
-## � Future Updates & Roadmap
+## 🚀 Future Updates & Roadmap
 
 Subservient is actively developed with exciting new features planned! Here's what's coming next:
 
@@ -750,7 +833,7 @@ Subservient is actively developed with exciting new features planned! Here's wha
 | 🤝 **Planned** | 📺 TV-Series Support | v0.9 BETA | Complete automation for TV shows with episode detection |
 | 🔥 **High** | 🛠️ 'Tools' option in Subservient menu & complete LINUX bugfixing  | v1.00 RELEASE | manual syncing, batch-renaming, muxing/de-muxing, manual subtitle offset tools, you name it! |
 | ⚡ **Medium** | 📊 Smarter subtitle search queries | v1.06 | More fallbacks for more comprehensive searches |
-| ⚡ **Medium** | � Asynchronous synchronisation (huh..what?) | v1.08 | Synchronizing multiple videos simultaneously
+| ⚡ **Medium** | 🔄 Asynchronous synchronisation (whaat?) | v1.08 | Synchronizing multiple videos simultaneously
 
 ### 🎯 Long-term potential ideas that I might be doing (2025-2027)
 
@@ -760,12 +843,12 @@ Subservient is actively developed with exciting new features planned! Here's wha
 
 ### 💬 Community Suggestions Welcome!
 
-**Have an idea for Subservient?** Feel free to post your ideas in the Subservient Github repo! 
+**Have an idea for Subservient?** Feel free to post your ideas in the Subservient GitHub repo! 
 
 | How to Suggest | Method | Response Time |
 |----------------|--------|---------------|
-| 🐛 **Bug Reports** | [GitHub Issues](https://github.com/N3xigen/Subservient/issues) | In my sparetime (varies a lot) |
-| 💡 **Feature Requests** | [GitHub Discussions](https://github.com/N3xigen/Subservient/discussions) | In my sparetime (varies a lot) |
+| 🐛 **Bug Reports** | [GitHub Issues](https://github.com/N3xigen/Subservient/issues) | In my spare time (varies a lot) |
+| 💡 **Feature Requests** | [GitHub Discussions](https://github.com/N3xigen/Subservient/discussions) | In my spare time (varies a lot) |
 | ☕ **VIP Suggestions** | Discord (for supporters) | Same day, possibly within minutes after your message |
 
 > 🎉 **Get Involved!**
@@ -807,14 +890,14 @@ Whether you choose to support financially or just follow along, it's a great way
 
 ### 🔧 Support & Response
 
-| Support Level | What You Get | Method | Notes |
-|---------------|-------------|--------|-------|
-| 🆓 **Community Support** | GitHub issues, community help, feel free to post | GitHub Repo | Available to everyone |
-| 💬 **BMAC Follower** | Access to supporter-only updates, posts, and the BMAC community | BMAC | $1+/month supporters |
-| ☕ **Coffee Supporter** | Priority responses, shoutout credits | Shoutout in the Credits in my applications | $2+/month supporters |
-| 🎯 **VIP Support** | Discord support access | VIP Discord Channel | $4/month+ supporters |
-| 🚀 **Early Access** | Pre-release builds, 2-month early access | Early Access Repository | $8/month+ supporters |
-| 🔥 **Live Development** | Real-time repo access, video shoutouts | Live Development Repository | $16/month+ supporters |
+| Support Level | What You Get | Method |
+|---------------|-------------|--------|
+| 🆓 **Community** | GitHub issues, community help | GitHub Repo |
+| 💬 **BMAC Follower** | Supporter updates, posts, community | BMAC ($1+/month) |
+| ☕ **Coffee Supporter** | Priority responses, shoutout credits | BMAC ($2+/month) |
+| 🎯 **VIP Support** | Discord support access | Discord ($4+/month) |
+| 🚀 **Early Access** | Pre-release builds, 2-month early access | Repository ($8+/month) |
+| 🔥 **Live Development** | Real-time repo access, video shoutouts | Repository ($16+/month) |
 
 > 🙏 **A Heartfelt Thank You**
 > 
@@ -846,7 +929,7 @@ If you distribute this software or create derivative works, you must:
 ### 📖 Full License Text
 For the complete license terms, see the [LICENSE](LICENSE) file in this repository or visit: [https://www.gnu.org/licenses/gpl-3.0.html](https://www.gnu.org/licenses/gpl-3.0.html)
 
-> � **In Simple Terms**: This is free software that will always remain free. You can use, modify, and share it, but if you distribute modified versions, they must also be open source under GPL-3.0.
+> 💡 **In Simple Terms**: This is free software that will always remain free. You can use, modify, and share it, but if you distribute modified versions, they must also be open source under GPL-3.0.
 
 <br>
 
@@ -879,4 +962,3 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
-
