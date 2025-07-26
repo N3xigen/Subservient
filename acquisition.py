@@ -190,6 +190,8 @@ def write_runtime_blocks_to_config(token=None, skipped_entries=None):
     runtime_blocks.append(TOKEN_TAG)
     if token:
         runtime_blocks.append(token)
+    else:
+        runtime_blocks.append("")
     if skipped_entries is None:
         skipped_movies_dict = get_skipped_movies_from_config()
         skipped_entries_set = set()
@@ -223,8 +225,10 @@ def get_token_from_config():
             j = i + 1
             while j < len(lines):
                 value = lines[j].strip()
-                if value and not value.startswith('['):
+                if value and not value.startswith('[') and not value.startswith('--') and not value.startswith('#'):
                     return value
+                elif value.startswith('['):
+                    break
                 j += 1
         elif line.strip().startswith('token ='):
             parts = line.split('=', 1)

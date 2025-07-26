@@ -1,13 +1,10 @@
 import os
 import sys
 import subprocess
-
-# Import colorama early for error messages
 try:
     from colorama import init, Fore, Style
     init(autoreset=True)
 except ImportError:
-    # Fallback if colorama is not installed
     class MockColor:
         def __getattr__(self, name):
             return ""
@@ -37,6 +34,34 @@ def ensure_core_requirements():
         print("\n[Subservient] The following required packages are missing:")
         for pkg in missing:
             print(f"  - {pkg}")
+        
+        if os.name == 'nt':
+            import shutil
+            import glob
+            cl_path = shutil.which('cl')
+            
+            if not cl_path:
+                vs_patterns = [
+                    r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
+                ]
+                found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
+                
+                if not found_cl:
+                    print(f"\n{Fore.YELLOW}ERROR: Build tools not installed. Python packages require Microsoft Visual C++ Build Tools to compile.{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Please install Microsoft Visual C++ Build Tools first before installing Python packages.{Style.RESET_ALL}")
+                    print(f"{Fore.WHITE}In the README, look for chapter: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+                    print(f"{Fore.WHITE}In there, check the 'External Tools' section for installation instructions.{Style.RESET_ALL}")
+                    input("\nPress Enter to exit...")
+                    sys.exit(1)
+        
         choice = input("\nWould you like to install ALL missing packages now? [y/n]: ").strip().lower()
         if choice in ('', 'y', 'yes'):
             try:
@@ -54,27 +79,6 @@ def ensure_core_requirements():
                 sys.exit(0)
             except Exception as e:
                 print(f"\n[ERROR] Failed to install packages: {e}\nPlease install them manually and restart the script.")
-                
-                # Check if Visual C++ Build Tools are missing on Windows
-                if os.name == 'nt':
-                    import shutil
-                    import glob
-                    cl_path = shutil.which('cl')
-                    
-                    if not cl_path:
-                        # Check if Build Tools exist but not in PATH
-                        vs_patterns = [
-                            r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
-                            r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
-                        ]
-                        found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
-                        
-                        if not found_cl:
-                            print(f"\n{Fore.YELLOW}Note: Some Python packages require Microsoft Visual C++ Build Tools to compile.{Style.RESET_ALL}")
-                            print(f"{Fore.YELLOW}If the installation failed due to missing build tools, please install this first.{Style.RESET_ALL}")
-                            print(f"{Fore.WHITE}In the README, look for chapter: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
-                            print(f"{Fore.WHITE}In there, check the 'External Tools' section for installation instructions.{Style.RESET_ALL}")
-                
                 input("\nPress Enter to exit...")
                 sys.exit(1)
         else:
@@ -184,9 +188,9 @@ def print_subservient_checklist():
     folder_name = folder_path.name
     short_path = str(folder_path.parent / (folder_name[:37] + '...' if len(folder_name) > 40 else folder_name))
     
-    subtitle_sync_threshold = config.get('subtitle_sync_threshold', None)
-    threshold_str = (f"{int(float(subtitle_sync_threshold) * 1000)} ms" 
-                    if subtitle_sync_threshold and subtitle_sync_threshold.replace('.', '').isdigit()
+    reject_offset_threshold = config.get('reject_offset_threshold', None)
+    threshold_str = (f"{float(reject_offset_threshold):.1f}s" 
+                    if reject_offset_threshold and reject_offset_threshold.replace('.', '').isdigit()
                     else f"{Fore.RED}N/A{Style.RESET_ALL}")
     
     print(f"{Style.BRIGHT}{Fore.BLUE}  [ Subservient Pre-Flight Checklist ]{Style.RESET_ALL}\n")
@@ -339,58 +343,39 @@ username=
 password=
 api_url= https://api.opensubtitles.com/api/v1
 
-# - LANGUAGES: Comma-separated list of subtitle languages to download (e.g. nl,en).
-# These are the languages for which subtitles will be searched and downloaded. Very important setting.
-# - AUDIO_TRACK_LANGUAGES: Comma-separated list of audio track languages to keep inside video files (e.g. nl,en,ja). ('undefined' tracks are always kept). Tracks with a language not in the list are removed.
-# Highly recommended to keep english in there, as 95% of all mainstream movies have english tracks only
-languages= nl,en
-audio_track_languages= en
+# - LANGUAGES: Comma-separated list of subtitle languages to download (e.g. nl,en). These are the languages for which subtitles will be searched and downloaded. Very important setting.
+# - AUDIO_TRACK_LANGUAGES: Comma-separated list of audio track languages to keep inside video files (e.g. nl,en,ja). ('undefined' tracks are always kept). Tracks with a language not in the list are removed. Highly recommended to keep english in there, as 95% of all mainstream movies have english tracks only
+languages= en
+audio_track_languages= en,ja
 
-# SUBTITLE_THRESHOLD: Determines when manual video verification is needed after synchronisation.
-# Subtitles with a delay/offset below the set threshold won't get flagged for manual verification.
-# 0.03 or below would be very strict, 0.10 or higher would be lenient.
-# A low setting is recommended as it gives the most accuracy, but gives more manual checkups.
-subtitle_threshold= 0.05
+# ACCEPT_OFFSET_THRESHOLD: If a subtitle synchronisation is below this threshold, then the subtitle will be accepted without needing further manual user verification. Generally speaking: A higher setting saves time, but may result in poorer syncs being accepted unconditionally. A lower setting leads to only very excellently synced subtittles getting through. Try finding your ideal balance by testing it on videos. I personally find that somewhere between 0.05 and 0.1 strikes a good balance
+accept_offset_threshold= 0.05
 
-# SUBTITLE_SYNC_THRESHOLD: Manages the time that subtitles appear before audio (built-in offset).
-# Lower values = more responsive sync, higher values = more subtitle reading time.
-# Recommended: 0.00-0.05 for tight sync, 0.05 and up for easier reading, but a more loose sync.
-subtitle_sync_threshold= 0.02
+# REJECT_OFFSET_THRESHOLD: If a subtitle synchronisation is above this threshold, then the subtitle will be rejected, meaning it will be marked as DRIFT and will be discarded later.Generally speaking: Higher settings will lead to less rejections, but more manual checkups for you to go through. Lower settings will lead to very fast rejections, making videos run out of subtitle candidates very quickly. NOTE: Increasing the threshold is usually recommended when you notice that many movies can't find good subtitle candidates anymore. I personally find that around 2 to 2.5 seconds strikes a good balance. You could try up to 4 seconds if you want to be more lenient, but I would not recommend going any higher, unless some videos are consistently rejected.
+reject_offset_threshold= 2.5
 
-# - SERIES_MODE: If true, treat all videos in the same folder as episodes of a TV series.
-# If false, only the largest video file in each folder is processed (movie mode).
-# - DELETE_EXTRA_VIDEOS: If true, all extra video files in a folder will be permanently deleted.
-# If false, extra video files will be moved to a folder named by EXTRAS_FOLDER_NAME.
-# This setting is ignored if series_mode is true (in series mode, all videos are kept).
+# - SERIES_MODE: If true, treat all videos in the same folder as episodes of a TV series. If false, only the largest video file in each folder is processed (movie mode).
+# - DELETE_EXTRA_VIDEOS: If true, all extra video files in a folder will be permanently deleted. If false, extra video files will be moved to a folder named by EXTRAS_FOLDER_NAME. This setting is ignored if series_mode is true (in series mode, all videos are kept).
 # - EXTRAS_FOLDER_NAME: Name of the folder where extra video files are moved if DELETE_EXTRA_VIDEOS is false.
 series_mode= false
 delete_extra_videos= false
 extras_folder_name= extras
 
-# PAUSE_SECONDS: Number of seconds to pause between phases, breaks, and other script waits.
-# If you don't mind about reading what happens in the terminal, a lower value can be set.
-# Example: 5 means a 5 second pause between phases and after summaries. Average speed = 5.
+# PAUSE_SECONDS: Number of seconds to pause between phases, breaks, and other script waits. If you don't mind about reading what happens in the terminal, a lower value can be set. Example: 5 means a 5 second pause between phases and after summaries. Average speed = 5.
 pause_seconds= 5
 
-# MAX_SEARCH_RESULTS: Maximum number of subtitle search results to consider per movie (e.g. 10).
-# Increasing MAX_SEARCH_RESULTS can help find more options, but may slow down processing.
-# When having a low download limit, it's strongly recommended to not go higher than 6
+# MAX_SEARCH_RESULTS: Maximum number of subtitle search results to consider per movie (e.g. 10). Increasing MAX_SEARCH_RESULTS can help find more options, but may slow down processing. When having a low download limit and many videos to sync, it's strongly recommended to not go higher than 12. As a VIP you can easily go for 20 or more.
 max_search_results= 12
 
-# TOP_DOWNLOADS: Number of subtitles to download and test per batch.
-# Keeping TOP_DOWNLOADS low preserves your daily download limit by first testing one batch before downloading another batch. If you have a low download limit, then 1, (max 2) is strongly recommended
-top_downloads= 2
+# TOP_DOWNLOADS: Number of subtitles to download and test per batch. Keeping TOP_DOWNLOADS low preserves your daily download limit by first testing one batch before downloading another batch. If you need to sync many videos, take 2 to 4 as a maximum. When you have 1000 downloads a day, you could set this to, say, 5-10, for significantly faster processing.
+top_downloads= 3
 
-# - SKIP_DIRS: Comma-separated list of directory names to skip when scanning for videos (e.g. extras,trailers,samples).
-# These directories will be ignored during video discovery in both movie and series mode.
-# Use lowercase names, matching is case-insensitive. Common examples: extras, trailers, samples, bonus.
+# - SKIP_DIRS: Comma-separated list of directory names to skip when scanning for videos (e.g. extras,trailers,samples). These directories will be ignored during video discovery in both movie and series mode. Use lowercase names, matching is case-insensitive. Common examples: extras, trailers, samples, bonus.
 skip_dirs= new folder,nieuwe map,extra,extra's,extras,featurettes,bonus,bonusmaterial,bonus_material,behindthescenes,behind_the_scenes,deletedscenes,deleted_scenes,interviews,makingof,making_of,scenes,trailer,trailers,sample,samples,other,misc,specials,special_features,documentary,docs,docu,promo,promos,bloopers,outtakes
 
 # UNWANTED_TERMS: Comma-separated list of words/terms that should be filtered from subtitle search results. For example, a search can be 'Lord of the Rings 2001 [h.265 HEVC 10 bit]'. The whole latter part would then be removed, so that 'The lord of the Rings 2001' remains, giving a good search query.
 UNWANTED_TERMS= sample,cam,ts,workprint,unrated,uncut,720p,1080p,2160p,480p,4k,uhd,imax,eng,ita,jap,hindi,web,webrip,web-dl,bluray,brrip,bdrip,dvdrip,hdrip,hdtv,remux,x264,x265,h.264,h.265,hevc,avc,hdr,hdr10,hdr10+,dv,dolby.vision,sdr,10bit,8bit,ddp,dd+,dts,aac,ac3,eac3,truehd,atmos,flac,5.1,7.1,2.0,yts,yts.mx,yify,rarbg,fgt,galaxyrg,cm8,evo,sparks,drones,amiable,kingdom,tigole,chd,ddr,hdchina,cinefile,ettv,eztv,aXXo,maven,fitgirl,skidrow,reloaded,codex,cpy,conspir4cy,hoodlum,hive-cm8,extras,final.cut,open.matte,hybrid,version,v2,proper,limited,dubbed,subbed,multi,dual.audio,complete.series,complete.season,Licdom,ac,sub,nl,en,ita,eng,subs,rip,h265,xvid,mp3,mp4,avi,Anime Time,[Anime Time]
-# LEGAL DISCLAIMER: These filters clean technical metadata from filenames regardless of source.
-# Subservient is designed for use with content you legally own or have rights to process.
-# The inclusion of various format and distribution tags serves technical interoperability purposes only.
+# LEGAL DISCLAIMER: These filters clean technical metadata from filenames regardless of source. Subservient is designed for use with content you legally own or have rights to process. The inclusion of various format and distribution tags serves technical interoperability purposes only.
 
 # RUN_COUNTER: used to count how many full runs have been made. Also used to organize logfiles
 # Don't change if you don't need to, as it may result in overwriting existing logs
@@ -402,6 +387,7 @@ run_counter= 0
 # Only change this if you know what you are doing!
 
 [RUNTIME]
+
 '''
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(config_template)
@@ -422,7 +408,6 @@ def import_utils():
     pathfile = config_dir / "Subservient_pathfiles"
     utils_path = None
     
-    # Try to read utils path from pathfile
     if pathfile.exists():
         try:
             with open(pathfile, encoding="utf-8") as f:
@@ -762,7 +747,12 @@ def check_requirements_status():
                     r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
                     r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
                     r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
-                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
                 ]
                 
                 found_cl = False
@@ -794,7 +784,6 @@ def check_requirements_status():
     
     print(f"\n{Fore.WHITE}If any are not working or installed, please check the README for installation instructions.{Style.RESET_ALL}")
     
-    # Check if any external tools are missing and provide README reference
     missing_external_tools = []
     if ffmpeg_status == f"{Fore.WHITE}[{Fore.LIGHTRED_EX}not installed{Fore.WHITE}]{Style.RESET_ALL}":
         missing_external_tools.append("ffmpeg")
@@ -834,16 +823,21 @@ def quick_requirements_check():
         else:
             tool_status.append(f"{Fore.GREEN}{display_name} found!{Style.RESET_ALL}")
     
-    # Check Build Tools on Windows
     if os.name == 'nt':
         cl_path = shutil.which('cl')
         if cl_path:
             tool_status.append(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL}")
         else:
-            # Check if Build Tools exist but not in PATH
             vs_patterns = [
                 r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
-                r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
             ]
             found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
             
@@ -852,7 +846,6 @@ def quick_requirements_check():
             else:
                 missing_tools.append("Microsoft Visual C++ Build Tools")
     
-    # Show status for found tools
     if tool_status:
         print(f"{Fore.LIGHTYELLOW_EX}Checking for external tools...{Style.RESET_ALL}")
         for status in tool_status:
@@ -897,7 +890,6 @@ def main():
                 config, pause_seconds = get_config_and_pause_seconds()
                 start_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
                 if start_choice == "1":
-                    # Perform quick requirements check before launching
                     if not quick_requirements_check():
                         print_full_main_menu()
                         continue
@@ -968,6 +960,35 @@ def main():
                 print(f"\n{Fore.WHITE}For detailed installation instructions, please see the README file.{Style.RESET_ALL}")
                 print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
                 print(f"{Fore.WHITE}You can also use option '6' from the main menu to open the README directly.{Style.RESET_ALL}")
+            
+            if os.name == 'nt':
+                import glob
+                cl_path = shutil.which('cl')
+                
+                if cl_path:
+                    print(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL}")
+                else:
+                    vs_patterns = [
+                        r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                        r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
+                    ]
+                    found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
+                    
+                    if found_cl:
+                        print(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL} {Fore.WHITE}(not in PATH){Style.RESET_ALL}")
+                    else:
+                        print(f"\n{Fore.LIGHTRED_EX}Microsoft Visual C++ Build Tools are not installed.{Style.RESET_ALL}")
+                        print(f"Some Python packages require these tools to compile properly.")
+                        print(f"{Fore.WHITE}In the README, look for chapter: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+                        print(f"{Fore.WHITE}In there, check the 'External Tools' section for installation instructions.{Style.RESET_ALL}")
+            
             print(f"{Fore.LIGHTYELLOW_EX}\nDo you want to proceed with (re)installing and testing?{Style.RESET_ALL}")
             print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, install and test everything")
             print(f"  {Fore.RED}2{Style.RESET_ALL} = No, return to main menu\n")

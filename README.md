@@ -114,7 +114,7 @@ During initial setup:
 | ⚓ | Create anchor point and pathfiles | Saves to system config |
 | ✅ | Verify installation | Shows confirmation |
 
-> ⚠️ **Windows Users:** If package installation fails during this step, you may need Microsoft Visual C++ Build Tools. See [Step 4](#-step-4-install--verify-requirements) for installation instructions.
+> ⚠️ **Windows Users:** Microsoft Visual C++ Build Tools are **required** for Python package installation. If you don't have them installed, Subservient will notice this, direct you to install them first and then exit. See [Step 4](#-step-4-install--verify-requirements) for installation instructions.
 
 <br>
 <details>
@@ -286,8 +286,8 @@ Open `.config` and configure the required settings:
 |---------|-------------|---------|
 | **max_search_results** | Max search results per video | `12` |
 | **top_downloads** | Subtitles to test per batch | `3` |
-| **accept_offset_threshold** | Auto-accept sync threshold | `0.05` |
-| **reject_offset_threshold** | Auto-reject (DRIFT) threshold | `1.2` |
+| **accept_offset_threshold** | Auto-accept sync threshold | `configurable` |
+| **reject_offset_threshold** | Auto-reject sync threshold | `configurable` |
 | **audio_track_languages** | Audio tracks to keep | `en,nl,ja` |
 | **skip_dirs** | Folders to ignore | `extras,trailers` |
 | **unwanted_terms** | Filter from search | `720p,BluRay` |
@@ -301,8 +301,8 @@ Open `.config` and configure the required settings:
 <summary>🔧 <strong>Advanced Setting Details</strong> - Click here for detailed explanation of every .config setting ✚</summary>
 
 **🎯 Sync Quality:**
-- **accept_offset_threshold** (0.05s): Lower = stricter, more manual checks
-- **reject_offset_threshold** (1.2s): Higher = more tolerance for poor syncs
+- **accept_offset_threshold**: Subtitles with sync offsets below this threshold are automatically accepted as excellent sync quality, skipping manual verification
+- **reject_offset_threshold**: Subtitles with sync offsets above this threshold are automatically rejected and new subtitles are downloaded
 
 **🔍 Search & Performance:**
 - **max_search_results**: More options but slower (Free: 6, VIP: 12+)
