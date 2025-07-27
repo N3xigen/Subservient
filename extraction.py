@@ -3,6 +3,7 @@ import sys
 import subprocess
 
 def check_required_packages():
+    """Check if all required packages are installed and show install instructions if missing."""
     required_packages = ["colorama", "platformdirs", "langdetect", "pycountry"]
     missing = []
     
@@ -116,6 +117,7 @@ with LOG_FILE.open('w', encoding='utf-8') as f:
 clear_and_print_ascii(BANNER_LINE)
 
 def ensure_initial_setup():
+    """Check if Subservient initial setup is complete."""
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     required_keys = [
@@ -153,12 +155,14 @@ ensure_initial_setup()
 progress_last = False
 
 def log(msg, end='\n'):
+    """Write message to log file only."""
     if isinstance(msg, str) and msg.strip().startswith('Progress:'):
         return
     with LOG_FILE.open('a', encoding='utf-8') as f:
         ansi_escape = re.compile(r'\x1b\[[0-9;]*m|\033\[[0-9;]*m')
         f.write(ansi_escape.sub('', str(msg)) + ('' if end == '' else end))
 def print_and_log(msg, end='\n'):
+    """Print message to console and write to log file."""
     if isinstance(msg, str) and msg.strip().startswith('Progress:'):
         return
     if not hasattr(print_and_log, 'progress_last'):
@@ -174,10 +178,12 @@ def print_and_log(msg, end='\n'):
     print(msg, end=end)
     log(msg, end=end)
 def ext_tag():
+    """Return formatted extraction tag for console output."""
     return f"{Style.BRIGHT}{Fore.BLUE}[Extraction]{Style.RESET_ALL}"
 UNWANTED_EXTENSIONS = [".sub", ".idx", ".sup", ".vob"]
 ALLOWED_CODECS = ["SubRip/SRT", "S_TEXT/UTF8", "SubStationAlpha", "S_TEXT/ASS", "SSA", "ASS"]
 def detect_language(sub_path):
+    """Detect language of subtitle file using langdetect library."""
     try:
         with open(sub_path, "r", encoding="utf-8", errors="ignore") as f:
             lines = [line.strip() for line in f if line.strip() and not line.strip().isdigit()]
@@ -189,11 +195,13 @@ def detect_language(sub_path):
         print_and_log(f"{ext_tag()} {Fore.RED}Error detecting language in {sub_path.name}: {str(e)}{Style.RESET_ALL}")
         return "unknown"
 def cleanup_unwanted_files(base_path):
+    """Remove unwanted files created during extraction process."""
     for ext in UNWANTED_EXTENSIONS:
         for unwanted in base_path.parent.glob(base_path.stem + f".und*{ext}"):
             unwanted.unlink()
             print_and_log(f"{ext_tag()} {Fore.YELLOW}Removed leftover unwanted file: {unwanted.name}{Style.RESET_ALL}")
 def extract_sxxexx_code(name: str) -> str:
+    """Extract season/episode code from filename."""
     match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
     if match:
         season = int(match.group(1))
@@ -201,14 +209,17 @@ def extract_sxxexx_code(name: str) -> str:
         return f"S{season:02d}E{episode:02d}"
     return "UNKNOWN"
 def shortname(path, maxlen=40):
+    """Truncate path to specified maximum length for display."""
     name = str(path)
     if len(name) <= maxlen:
         return name
     return name[:maxlen//2] + '...' + name[-maxlen//2:]
 def print_movie_header(movie_name, idx, total):
+    """Print formatted header for current movie being processed."""
     bar = f"{Fore.CYAN}[{idx}/{total}]{Style.RESET_ALL}  {Fore.LIGHTYELLOW_EX}{movie_name.upper()}{Style.RESET_ALL}"
     print(bar.ljust(79), end='\n')
 def run_extraction_with_progress(cmd, output_path, total_subtitles, current_sub):
+    """Run subtitle extraction command with progress display."""
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     start_time = time.time()
     
@@ -235,6 +246,7 @@ def run_extraction_with_progress(cmd, output_path, total_subtitles, current_sub)
     return stdout, stderr
 
 def run_remux_with_progress(cmd, temp_path, orig_size):
+    """Run video remux command with file size-based progress bar."""
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     percent = [0]
     stop_flag = [False]
@@ -258,6 +270,7 @@ def run_remux_with_progress(cmd, temp_path, orig_size):
     t.join()
     return stdout, stderr
 def extract_subtitles(file_path, movie_idx=1, total_movies=1):
+    """Extract internal subtitles from video file and clean up temporary files."""
     extracted_files = []
     deleted_files = []
     if file_path.stat().st_size < 50 * 1024 * 1024:
@@ -669,6 +682,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         entry = f"{file_path.name}: {','.join(missing_langs)}"
         missing_subs_list.append(entry)
 def to_iso639_2(code):
+    """Convert language code to ISO 639-2 format."""
     code = (code or '').lower()
     try:
         lang = pycountry.languages.get(alpha_2=code)
@@ -684,6 +698,7 @@ def to_iso639_2(code):
         pass
     return code
 def get_video_files_for_folder(folder: Path) -> list:
+    """Get all video files in folder while respecting skip_dirs configuration."""
     video_files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in ['.mkv', '.mp4']]
     if SERIES_MODE:
         return sorted(video_files)
@@ -715,6 +730,7 @@ def get_video_files_for_folder(folder: Path) -> list:
                     print_and_log(f"{ext_tag()} {Fore.RED}Failed to move {f.name}: {e}{Style.RESET_ALL}")
     return [largest]
 def get_subservient_anchor():
+    """Get the Subservient anchor directory from pathfiles config."""
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     if not pathfile.exists():
@@ -739,6 +755,7 @@ os.chdir(anchor_dir)
 __file__ = str((anchor_dir / Path(__file__).name).resolve())
 
 def process_directory(root_path):
+    """Process all video files in directory and extract their internal subtitles."""
     anchor_videos = get_video_files_for_folder(root_path)
     if anchor_videos:
         total_movies = len(anchor_videos)

@@ -43,6 +43,7 @@ LANG_3TO2_MAP = {
 }
 
 def get_subservient_folder():
+    """Get the Subservient anchor folder path from config file."""
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     if pathfile.exists():
@@ -57,15 +58,18 @@ def get_subservient_folder():
     return Path(__file__).parent
 
 def clear_and_print_ascii(banner_line):
+    """Clear screen and display ASCII art with banner."""
     os.system('cls' if os.name == 'nt' else 'clear')
     print(f"{Style.BRIGHT}{Fore.BLUE}{ASCII_ART}{Style.RESET_ALL}\n")
     print(f"{Style.BRIGHT}{banner_line}{Style.RESET_ALL}\n")
 
 def map_lang_3to2(code):
+    """Convert 3-letter language code to 2-letter equivalent."""
     code = code.lower()
     return LANG_3TO2_MAP.get(code, code)
 
 def get_internal_subtitle_languages(video_path):
+    """Extract internal subtitle languages from video file using ffprobe."""
     cmd = [
         "ffprobe", "-v", "error", "-select_streams", "s", "-show_entries",
         "stream=index:stream_tags=language", "-of", "csv=p=0", video_path
@@ -86,6 +90,7 @@ def get_internal_subtitle_languages(video_path):
     except Exception:
         return []
 def trim_movie_name(filename):
+    """Extract clean movie name by removing year and extension patterns."""
     m = re.search(r'^(.*?)(\(|\.|\s)(19|20)\d{2}(\)|\.|\s)', filename)
     if m:
         base = filename[:m.end(4)].strip()
@@ -94,6 +99,7 @@ def trim_movie_name(filename):
     return filename
 
 def scan_subtitle_coverage(videos, languages, show_progress=True, logger_func=None, sync_tag_func=None):
+    """Scan video files and analyze subtitle coverage for specified languages."""
     if not videos:
         return []
     log_func = logger_func if logger_func else print
@@ -145,6 +151,7 @@ def scan_subtitle_coverage(videos, languages, show_progress=True, logger_func=No
     return coverage_results
 
 def display_coverage_results(coverage_results, languages, banner_line=None, return_to_menu=True, logger_func=None, sync_tag_func=None):
+    """Display formatted subtitle coverage report with statistics."""
     log_func = logger_func if logger_func else print
     tag_func = sync_tag_func if sync_tag_func else lambda: ""
     if banner_line:
@@ -218,6 +225,7 @@ def display_coverage_results(coverage_results, languages, banner_line=None, retu
         input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
 
 def get_languages_from_config(config_path=None):
+    """Read languages setting from config file."""
     if config_path is None:
         subservient_folder = get_subservient_folder()
         config_path = subservient_folder / '.config'
@@ -236,6 +244,7 @@ def get_languages_from_config(config_path=None):
             pass
     return languages
 def get_skip_dirs_from_config(config_path=None):
+    """Read skip_dirs setting from config file and return as lowercase set."""
     if config_path is None:
         subservient_folder = get_subservient_folder()
         config_path = subservient_folder / '.config'
@@ -267,33 +276,28 @@ def get_skip_dirs_from_config(config_path=None):
             "documentary", "docs", "docu", "promo", "promos", "bloopers", "outtakes"
         }
     
-    # Add the extras folder name from config to skip_dirs if it exists
     if extras_folder_name:
         skip_dirs.add(extras_folder_name)
     elif 'extras' not in skip_dirs:
-        # Add default extras folder name if not already present
         skip_dirs.add('extras')
     
     return skip_dirs
 
 def find_videos_in_directory(directory, config_path=None):
+    """Find all video files in directory while respecting skip_dirs config."""
     directory = Path(directory)
     video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
     videos = []
     skip_dirs = get_skip_dirs_from_config(config_path)
     
-    # Check for direct videos in the main directory first
     direct_videos = [f for f in directory.iterdir() if f.is_file() and f.suffix.lower() in video_exts]
     if direct_videos:
         videos = [str(f) for f in direct_videos]
     else:
-        # Use os.walk for recursive directory scanning, respecting skip_dirs
         import os
         for dirpath, dirnames, filenames in os.walk(directory):
-            # Filter out skip_dirs from dirnames to prevent os.walk from descending into them
             dirnames[:] = [d for d in dirnames if d.lower() not in skip_dirs]
             
-            # Find video files in current directory
             for filename in filenames:
                 if Path(filename).suffix.lower() in video_exts:
                     videos.append(str(Path(dirpath) / filename))

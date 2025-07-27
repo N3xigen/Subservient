@@ -11,8 +11,9 @@ except ImportError:
     Fore = Style = MockColor()
 
 def ensure_core_requirements():
-    """
-    Check if required packages are installed and offer to install missing ones.
+    """Install core Python packages required for Subservient to function.
+    
+    Checks if required packages are installed and offers to install missing ones.
     Exits the program after installation or if user declines installation.
     """
     REQUIRED_PACKAGES = [
@@ -101,9 +102,10 @@ import requests
 BANNER_LINE = f"                   {Fore.LIGHTRED_EX}[Phase 1/4]{Style.RESET_ALL} Subservient Set-up"
 
 def write_anchor_to_pathfile():
-    """
-    Write or update the subservient anchor path in the pathfile.
-    Creates config directory and pathfile if they don't exist.
+    """Write current directory path to Subservient pathfiles config.
+    
+    Writes or updates the subservient anchor path in the pathfile and
+    creates config directory and pathfile if they don't exist.
     """
     config_dir = Path(user_config_dir()) / "Subservient"
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -127,9 +129,10 @@ def write_anchor_to_pathfile():
         f.write("\n".join(lines) + "\n")
 
 def print_subservient_checklist():
-    """
-    Display pre-flight checklist with current configuration and video processing settings.
-    Shows mode, processing type, language settings, and other important parameters.
+    """Display pre-flight checklist for Subservient setup and usage.
+    
+    Shows current configuration and video processing settings including mode,
+    processing type, language settings, and other important parameters.
     """
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
@@ -210,6 +213,7 @@ def print_subservient_checklist():
     print(f"{Fore.GREEN}  1{Style.RESET_ALL} = Looks good, start Subservient!")
     print(f"{Fore.RED}  2{Style.RESET_ALL} = This is incorrect. Exit so that I can fix it")
 def print_main_menu():
+    """Display main menu options for Subservient."""
     """Display the main menu options for the Subservient application."""
     print(f"\n{Style.BRIGHT}{Fore.YELLOW}What would you like to do?{Style.RESET_ALL}\n")
     print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Start Subservient")
@@ -221,11 +225,9 @@ def print_main_menu():
     print(f"  {Fore.GREEN}7{Style.RESET_ALL} = Exit\n")
 
 def print_instructions_page(page):
-    """
-    Display a specific page of the instruction manual.
+    """Display specified page of usage instructions.
     
-    Args:
-        page (int): Page number to display (1-5)
+    Shows a specific page of the instruction manual (pages 1-5).
     """
     utils.clear_and_print_ascii(BANNER_LINE)
     if page == 1:
@@ -274,9 +276,10 @@ def print_instructions_page(page):
         print(f"{Fore.LIGHTWHITE_EX}I can't always offer one-on-one support to everyone, but donors are welcome to join my Discord for extra help.\nDonors can also get my builds/patches earlier (or as soon as I commit them) as an extra 'thank you'.\nMany thanks for understanding, for donating, and heck.. even just for using Subservient.{Style.RESET_ALL}")
         print(f"{Fore.LIGHTMAGENTA_EX}-Nexigen")
 def show_instructions():
-    """
-    Interactive instruction manual with navigation between pages.
-    Allows users to go through 5 pages of setup and usage instructions.
+    """Show paginated instructions for using Subservient.
+    
+    Interactive instruction manual with navigation between pages allowing
+    users to go through 5 pages of setup and usage instructions.
     """
     page = 1
     total_pages = 5
@@ -296,9 +299,10 @@ def show_instructions():
     print(f"{Style.DIM}When unsure how to proceed, you can consult the README file or press option '3' for guidance.{Style.RESET_ALL}")
     print_main_menu()
 def reconstruct_config():
-    """
-    Create a new .config file with default template.
-    Prompts user for confirmation if existing config file found.
+    """Interactive configuration file reconstruction with user prompts.
+    
+    Creates a new .config file with default template and prompts user for 
+    confirmation if existing config file is found.
     """
     utils.clear_and_print_ascii(BANNER_LINE)
     print(f"{Style.BRIGHT}{Fore.YELLOW}You can use this option to reconstruct the .config file if your current config is missing or not working properly.{Style.RESET_ALL}\n")
@@ -395,14 +399,10 @@ run_counter= 0
     input("Press Enter to return to the main menu...")
     print_full_main_menu()
 def import_utils():
-    """
-    Dynamically import the utils module from the registered path.
+    """Import utils module and handle missing file error gracefully.
     
-    Returns:
-        module: The loaded utils module
-        
-    Raises:
-        FileNotFoundError: If utils.py cannot be found via pathfile
+    Dynamically imports the utils module from the registered path and handles
+    cases where utils.py cannot be found via pathfile.
     """
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
@@ -450,10 +450,10 @@ def import_utils():
     sys.exit(1)
 
 def ensure_initial_setup():
-    """
-    Verify that all required Subservient scripts are present and register their paths.
-    Creates pathfile with script locations for cross-module access.
-    Exits with error if required scripts are missing.
+    """Ensure initial Subservient setup is complete with pathfiles and config.
+    
+    Verifies that all required Subservient scripts are present and registers their paths.
+    Creates pathfile with script locations for cross-module access and exits with error if required scripts are missing.
     """
     required_keys = ["subservient_anchor", "subordinate_path", "extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
     required_scripts = ["subordinate.py", "extraction.py", "acquisition.py", "synchronisation.py", "utils.py"]
@@ -512,12 +512,10 @@ ensure_initial_setup()
 utils = import_utils()
 write_anchor_to_pathfile()
 def get_log_path():
-    """
-    Create logs directory if needed and return the log file path.
-    Uses the main Subservient folder for logs, not the local subordinate.py location.
+    """Get path for requirements log file based on run counter.
     
-    Returns:
-        Path: Path to the current log file
+    Creates logs directory if needed and returns the log file path using
+    the main Subservient folder for logs, not the local subordinate.py location.
     """
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
@@ -539,19 +537,17 @@ def get_log_path():
     return logs_dir / f"install_log_{log_timestamp}.txt"
 
 def log_requirements_event(message):
-    """
-    Log a timestamped message to the requirements installation log file.
+    """Log requirements-related event to requirements log file.
     
-    Args:
-        message (str): Message to log
+    Logs a timestamped message to the requirements installation log file.
     """
     log_path = get_log_path()
     timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(f"{timestamp} {message}\n")
+
 def get_config_and_pause_seconds():
-    """
-    Load configuration settings and extract pause_seconds value.
+    """Load configuration settings and extract pause_seconds value.
     
     Returns:
         tuple: (config dict, pause_seconds float)
@@ -580,10 +576,13 @@ def get_config_and_pause_seconds():
     
     pause_seconds = float(config.get('pause_seconds', 5))
     return config, pause_seconds
+
 def check_requirements_status():
-    """
-    Check and test all required Python packages and ffmpeg installation.
-    Displays status for each requirement and logs results to file.
+    """Comprehensive check and installation of all required packages and tools.
+    
+    This complex function tests all Python packages, external tools like ffmpeg and MKVToolNix,
+    and Windows-specific build tools. It displays detailed status information, performs
+    functional tests where possible, and logs all results to file for troubleshooting.
     """
     import importlib
     import time
@@ -800,9 +799,10 @@ def check_requirements_status():
     log_requirements_event("--- REQUIREMENTS VERIFICATION END ---")
     input(f"{Fore.LIGHTYELLOW_EX}Press Enter to return to the main menu...{Style.RESET_ALL}")
     print_full_main_menu()
+
 def quick_requirements_check():
-    """
-    Perform a quick check of essential requirements before launching extraction.
+    """Perform a quick check of essential requirements before launching extraction.
+    
     Returns True if all essential tools are available, False otherwise.
     """
     import shutil
@@ -868,6 +868,7 @@ def quick_requirements_check():
     return True
 
 def print_full_main_menu():
+    """Display complete main menu with all available options."""
     """Display the banner and full main menu with location information."""
     utils.clear_and_print_ascii(BANNER_LINE)
     print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} This is the central script for Subservient subtitle automation.")
@@ -876,8 +877,8 @@ def print_full_main_menu():
     print_main_menu()
 
 def main():
-    """
-    Main application loop handling user menu choices and navigation.
+    """Main application loop handling user menu choices and navigation.
+    
     Processes user input and calls appropriate functions for each menu option.
     """
     print_full_main_menu()
@@ -1036,8 +1037,8 @@ def main():
             return
 
 def run_subtitle_coverage_scan():
-    """
-    Perform a subtitle coverage scan on videos in the current directory.
+    """Perform a subtitle coverage scan on videos in the current directory.
+    
     Shows which videos have subtitles for configured languages.
     Handles errors gracefully and provides user feedback.
     """

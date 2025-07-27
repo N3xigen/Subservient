@@ -2,6 +2,7 @@ import os, re, subprocess, tempfile, shutil, time, sys, stat, datetime, threadin
 from concurrent.futures import ThreadPoolExecutor
 
 def calculate_subtitle_offset(original_path, synchronized_path):
+    """Calculate time offset between original and synchronized subtitle files."""
     try:
         def parse_srt_first_timestamp(file_path):
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -31,6 +32,7 @@ def calculate_subtitle_offset(original_path, synchronized_path):
         return 0.0
 
 def synchronize_subtitle_with_ffsubsync(video_path, subtitle_path, output_path):
+    """Synchronize subtitle file with video using ffsubsync and return success status with offset."""
     try:
         if not os.path.exists(video_path):
             print_and_log(f"{sync_tag()} {Fore.RED}Video file not found: {video_path}{Style.RESET_ALL}")
@@ -64,6 +66,7 @@ def synchronize_subtitle_with_ffsubsync(video_path, subtitle_path, output_path):
         return False, 0.0
 
 def check_required_packages():
+    """Check if all required packages are installed and show install instructions if missing."""
     required_packages = ["colorama", "platformdirs", "langdetect"]
     missing = []
     for package in required_packages:
@@ -135,6 +138,7 @@ else:
         f.write('Synchronisation - part 1\n')
 
 def read_config_as_dict(config_path):
+    """Read config file and return key-value pairs as dictionary."""
     if not os.path.exists(config_path):
         return {}
     with open(config_path, encoding='utf-8') as f:
@@ -142,18 +146,22 @@ def read_config_as_dict(config_path):
                 for line in f if (m := re.match(r'^([a-zA-Z0-9_]+)\s*=\s*(.+)$', line.strip()))}
 
 def strip_ansi(text):
+    """Remove ANSI color codes from text."""
     return ANSI_ESCAPE.sub('', text)
 
 def sync_tag():
+    """Return formatted synchronisation tag for console output."""
     return f"{Style.BRIGHT}{Fore.BLUE}[Synchronisation]{Style.RESET_ALL}"
 
 def print_and_log(msg, end='\n', log_only=False):
+    """Print message to console and write to log file."""
     if not log_only:
         print(msg, end=end)
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
         f.write(strip_ansi(msg) + ('' if end == '' else end))
 
 def input_and_log(prompt):
+    """Get user input and log it to file."""
     print_and_log(prompt, end='')
     answer = input('')
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
@@ -161,6 +169,7 @@ def input_and_log(prompt):
     return answer
 
 def ensure_initial_setup():
+    """Check if Subservient initial setup is complete."""
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     required_keys = ["subservient_anchor", "subordinate_path", "extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
@@ -172,6 +181,7 @@ def ensure_initial_setup():
         show_setup_error()
 
 def show_setup_error():
+    """Display setup error message and exit."""
     error_msg = (f"{Fore.RED}{Style.BRIGHT}[ERROR]{Style.RESET_ALL} Initial setup not complete.\n\n"
                 f"{Fore.YELLOW}To get started with Subservient:{Style.RESET_ALL}\n"
                 f"{Fore.CYAN}1.{Style.RESET_ALL} Ensure subordinate.py is in the main folder with other scripts\n"
@@ -208,12 +218,12 @@ for root, dirs, files in os.walk(anchor_path):
 
 config_values = read_config_as_dict(CONFIG_PATH)
 pause_seconds = int(float(config_values.get('pause_seconds', 3)))
-# Load the new configurable thresholds
 ACCEPT_OFFSET_THRESHOLD = float(config_values.get('accept_offset_threshold', 0.05))
 REJECT_OFFSET_THRESHOLD = float(config_values.get('reject_offset_threshold', 1.2))
 drift_marked = False
 
 def read_languages_from_config(config_path):
+    """Read and validate language settings from config file."""
     if not os.path.exists(config_path):
         print_and_log(f"{sync_tag()} {Fore.RED}Config file not found. Defaulting to English.{Style.RESET_ALL}")
         return handle_language_default_warning()
@@ -233,6 +243,7 @@ def read_languages_from_config(config_path):
     return handle_language_default_warning()
 
 def handle_language_default_warning():
+    """Handle language config warning with user choice to continue or exit."""
     while True:
         print_and_log(f"\n{Fore.RED}{Style.BRIGHT}WARNING: No valid languages found in config!{Style.RESET_ALL}")
         print_and_log(f"{Fore.YELLOW}Defaulting to English only.{Style.RESET_ALL}")
@@ -250,6 +261,7 @@ def handle_language_default_warning():
             print_and_log(f"{Fore.RED}Invalid choice. Please enter 1 or 2.{Style.RESET_ALL}")
 
 def read_series_mode_from_config(config_path):
+    """Read series mode setting from config file."""
     if not os.path.exists(config_path):
         print_and_log(f"{sync_tag()} {Fore.YELLOW}Config file not found. Defaulting to film mode.{Style.RESET_ALL}")
         return False
@@ -266,6 +278,7 @@ def read_series_mode_from_config(config_path):
     return False
 
 def run_ffmpeg_with_progress(cmd, output_path, orig_size):
+    """Run ffmpeg command with progress bar based on output file size."""
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     stop_flag = threading.Event()
     
@@ -296,6 +309,7 @@ LANGUAGES = read_languages_from_config(CONFIG_PATH)
 SERIES_MODE = read_series_mode_from_config(CONFIG_PATH)
 
 def extract_sxxexx(filename):
+    """Extract season/episode code (SxxExx) from filename."""
     match = re.search(r'(S\d{2}E\d{2})', filename, re.IGNORECASE)
     return match.group(1).upper() if match else None
 
@@ -322,9 +336,11 @@ if FAILED_SUBS:
     for (base, lang) in sorted(FAILED_SUBS):
         print_and_log(f"    {Fore.LIGHTRED_EX}* {base} [{lang.upper()}] ({FAILED_DETAILS[(base, lang)]}){Style.RESET_ALL}")
 def print_video_header(video_name, idx, total):
+    """Print formatted header for current video being processed."""
     bar = f"{Fore.CYAN}[{idx}/{total}]{Style.RESET_ALL}  {Fore.LIGHTYELLOW_EX}{os.path.basename(video_name).upper()}{Style.RESET_ALL}"
     print(bar.ljust(79), end='\n', flush=True)
 def cleanup_duplicates_in_folder(folder: str, languages):
+    """Remove redundant numbered subtitle files when correct ones exist."""
     try:
         files = os.listdir(folder)
     except Exception:
@@ -349,6 +365,7 @@ def cleanup_duplicates_in_folder(folder: str, languages):
                                 print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {g}: {e}{Style.RESET_ALL}")
 
 def final_cleanup_prompt_and_cleanup():
+    """Perform final cleanup of duplicate and redundant subtitle files."""
     print_and_log(f"{sync_tag()} {Fore.LIGHTYELLOW_EX}Final cleanup: removing duplicate/redundant subtitles...{Style.RESET_ALL}")
     
     total_dirs = 1
@@ -394,12 +411,14 @@ not_cleaned_videos = []
 manual_choices = {}
 
 def has_internal_subs(video_path):
+    """Check if video file contains internal subtitle streams."""
     cmd = ["ffprobe", "-v", "error", "-select_streams", "s",
            "-show_entries", "stream=index", "-of", "csv=p=0", video_path]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return bool(result.stdout.strip())
 
 def remove_internal_subs(video_path):
+    """Remove all internal subtitle streams from video file."""
     temp_path = video_path + ".nointernal.mkv"
     cmd = ["ffmpeg", "-hide_banner", "-y", "-i", video_path,
            "-map", "0:v", "-map", "0:a", "-c", "copy", "-sn", temp_path]
@@ -414,6 +433,12 @@ def remove_internal_subs(video_path):
         return False
 
 def prompt_and_cleanup_internal_subs():
+    """Handle internal subtitle cleanup with interactive user prompts for each video.
+    
+    This complex function processes videos with internal subtitles and prompts users
+    to decide whether to keep or remove them. It handles different scenarios based on
+    missing external subtitles and duplicate language tracks.
+    """
     global cleaned_internal_subs, not_cleaned_internal_subs, not_cleaned_videos, manual_choices
     total = sum(1 for video in videos if has_internal_subs(video) and any(
         not os.path.exists(f"{os.path.splitext(video)[0]}.{lang}.srt") for lang in LANGUAGES)
@@ -673,6 +698,7 @@ def prompt_and_cleanup_internal_subs():
 MOVIES_WITH_LINEAR_OFFSET_FILE = os.path.join(script_dir, 'movies_with_linear_offset.txt')
 
 def add_offset_entry(video, video_dir, lang, output_sub, diffs, anchor_path, sub_files):
+    """Add or update offset entry in tracking file for manual verification."""
     if not os.path.exists(MOVIES_WITH_LINEAR_OFFSET_FILE):
         with open(MOVIES_WITH_LINEAR_OFFSET_FILE, 'w', encoding='utf-8') as f:
             f.write("Linear offset tracking file for movies with subtitle sync corrections.\n")
@@ -756,6 +782,7 @@ def add_offset_entry(video, video_dir, lang, output_sub, diffs, anchor_path, sub
     action_word = "Updated" if entry_found else "Added"
     print_and_log(f"{sync_tag()} {Fore.GREEN}{action_word} offset entry for {trimmed_name}{Style.RESET_ALL}")
 def get_first_line_and_time(sub_path):
+    """Extract first timestamp and text line from subtitle file."""
     ext = os.path.splitext(sub_path)[1].lower()
     with open(sub_path, encoding="utf-8", errors="ignore") as f:
         if ext == ".srt":
@@ -766,6 +793,7 @@ def get_first_line_and_time(sub_path):
             return time_str, first_line
     return "", ""
 def apply_srt_offset(sub_path, ms_offset):
+    """Apply time offset to all timestamps in SRT subtitle file."""
     try:
         with open(sub_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -810,14 +838,7 @@ def apply_srt_offset(sub_path, ms_offset):
     except Exception as e:
         return False, str(e)
 def mark_subtitle_as_drift(subtitle_path, lang, create_copies=False):
-    """
-    Mark a subtitle file as DRIFT by renaming it.
-    Args:
-        subtitle_path: Path to the subtitle file to mark as DRIFT
-        lang: Language code
-        create_copies: Whether to create DRIFT copies for lower numbers (only needed for manual verification)
-    Returns the new DRIFT file path.
-    """
+    """Mark subtitle file as DRIFT and optionally create copies for lower numbers."""
     try:
         video_dir = os.path.dirname(subtitle_path)
         subtitle_name = os.path.basename(subtitle_path)
@@ -858,14 +879,7 @@ def mark_subtitle_as_drift(subtitle_path, lang, create_copies=False):
         return None
 
 def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True):
-    """
-    Clean up numbered and failed subtitle files for a language.
-    Args:
-        video_dir: Directory containing subtitle files
-        lang: Language code 
-        keep_file: File to keep (don't delete)
-        clean_drifts: Whether to clean DRIFT files (set False if acquisition might be needed)
-    """
+    """Clean up numbered, failed, and drift subtitle files for a language."""
     for f in os.listdir(video_dir):
         full_path = os.path.abspath(os.path.join(video_dir, f))
         if re.match(rf".*\.{lang}\.number\d+\.srt$", f, re.IGNORECASE):
@@ -1049,6 +1063,7 @@ else:
                 missing_per_video.setdefault(video, []).append(lang)
 
 def show_offset_verification_menu():
+    """Display menu for manual verification of subtitle offset corrections."""
     MOVIES_WITH_LINEAR_OFFSET_FILE = os.path.join(script_dir, 'movies_with_linear_offset.txt')
     if not os.path.exists(MOVIES_WITH_LINEAR_OFFSET_FILE):
         return
@@ -1078,6 +1093,7 @@ def show_offset_verification_menu():
     show_offset_verification_details()
 
 def open_video_with_default_app(path):
+    """Open video file with system default media player."""
     if sys.platform.startswith('win'):
         os.startfile(path)
     elif sys.platform.startswith('darwin'):
@@ -1086,6 +1102,7 @@ def open_video_with_default_app(path):
         subprocess.call(['xdg-open', path])
 
 def remove_completed_entry_from_offset_file(title, folder, video):
+    """Remove verified entry from offset tracking file."""
     offset_file = os.path.join(script_dir, 'movies_with_linear_offset.txt')
     if not os.path.exists(offset_file):
         return
@@ -1146,6 +1163,7 @@ def remove_completed_entry_from_offset_file(title, folder, video):
         print_and_log(f"{sync_tag()} {Fore.RED}Error removing entry from offset file: {str(e)}{Style.RESET_ALL}")
 
 def show_offset_verification_details():
+    """Process offset verification entries and prompt user for each video."""
     offset_file = os.path.join(script_dir, 'movies_with_linear_offset.txt')
     if not os.path.exists(offset_file):
         print_and_log(f"{Fore.LIGHTRED_EX}No offset verification file found!{Style.RESET_ALL}")
@@ -1275,6 +1293,12 @@ def show_offset_verification_details():
                 print_and_log(f"{Fore.RED}Invalid choice. Please enter 1 or 2.{Style.RESET_ALL}")
 
 def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timestamp, folder, video):
+    """Display interactive menu for manual subtitle timing correction with multiple adjustment options.
+    
+    This complex function provides a detailed interface for manually adjusting subtitle timing
+    with options to apply positive/negative offsets, restore original timing, or mark as drift.
+    It tracks all changes and provides video playback integration for verification.
+    """
     global drift_marked
     logs = []
     sub_path = os.path.join(folder, subtitle_name)

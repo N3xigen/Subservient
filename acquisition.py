@@ -3,6 +3,7 @@ import sys
 import subprocess
 
 def check_required_packages():
+    """Check if all required packages are installed and show install instructions if missing."""
     required_packages = ["colorama", "platformdirs", "requests"]
     missing = []
     for package in required_packages:
@@ -72,6 +73,7 @@ else:
         f.write(f'Acquisition - part 1\n')
 ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m|\033\[[0-9;]*m')
 def strip_ansi(text):
+    """Remove ANSI color codes from text."""
     return ANSI_ESCAPE.sub('', text)
 
 with LOG_FILE.open('a+', encoding='utf-8') as f:
@@ -80,16 +82,19 @@ with LOG_FILE.open('a+', encoding='utf-8') as f:
     f.write(strip_ansi(banner) + '\n\n')
 
 def print_and_log(msg, end='\n'):
+    """Print message to console and write to log file."""
     print(msg, end=end)
     with LOG_FILE.open('a', encoding='utf-8') as f:
         f.write(strip_ansi(msg) + ('' if end == '' else end))
 
 def print_and_log_colored(msg, color=Fore.WHITE, end='\n'):
+    """Print colored message to console and log plain text to file."""
     print(f"{color}{msg}{Style.RESET_ALL}", end=end)
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
         f.write(strip_ansi(msg) + ('' if end == '' else end))
 clear_and_print_ascii(BANNER_LINE)
 def get_subservient_anchor():
+    """Get the Subservient anchor directory from pathfiles config."""
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
     if not pathfile.exists():
@@ -119,9 +124,11 @@ REQUIRED_SETUP_KEYS = [
     'series_mode',
 ]
 def parse_bool(val):
+    """Convert string value to boolean."""
     return str(val).strip().lower() in ("true", "1", "yes", "on")
 
 def read_setup_from_config():
+    """Read configuration settings from .config file and validate required keys."""
     if not CONFIG_PATH.exists():
         clear_and_print_ascii(BANNER_LINE)
         print_and_log(f"\033[1;31m[ERROR]\033[0m .config not found!\n\nCreate a valid config or reset it via subordinate.py.")
@@ -161,9 +168,11 @@ MAX_SEARCH_RESULTS = int(setup.get('max_search_results', 50))
 TOP_DOWNLOADS = int(setup['top_downloads'])
 SERIES_MODE = setup['series_mode']
 def acq_tag():
+    """Return formatted acquisition tag for console output."""
     return f"{Style.BRIGHT}{Fore.BLUE}[Acquisition]{Style.RESET_ALL}"
 
 def write_runtime_blocks_to_config(token=None, skipped_entries=None):
+    """Write runtime configuration blocks to config file."""
     SEP = '--'
     TOKEN_COMMENT = 'JWT token for OpenSubtitles API. Acquisition.py will update this automatically.'
     TOKEN_TAG = '[token]'
@@ -214,9 +223,11 @@ def write_runtime_blocks_to_config(token=None, skipped_entries=None):
     out.append('')
     CONFIG_PATH.write_text('\n'.join(out), encoding='utf-8')
 def set_token_in_config(token):
+    """Store JWT token in config file."""
     write_runtime_blocks_to_config(token=token)
 
 def get_token_from_config():
+    """Retrieve JWT token from config file."""
     if not CONFIG_PATH.exists():
         return None
     lines = CONFIG_PATH.read_text(encoding='utf-8').splitlines()
@@ -237,6 +248,7 @@ def get_token_from_config():
     return None
 
 def exit_with_prompt(message="Press any key to exit..."):
+    """Display message and wait for user input before exiting."""
     try:
         input(f"{acq_tag()} {message}")
     except EOFError:
@@ -244,6 +256,7 @@ def exit_with_prompt(message="Press any key to exit..."):
     sys.exit(1)
 
 def get_jwt_token():
+    """Obtain JWT token through API authentication."""
     token = get_token_from_config()
     if token:
         return token
@@ -289,6 +302,7 @@ def get_jwt_token():
         return None
 
 def get_unwanted_terms_from_config():
+    """Read unwanted_terms setting from config file."""
     if not CONFIG_PATH.exists():
         return []
     lines = CONFIG_PATH.read_text(encoding='utf-8').splitlines()
@@ -300,6 +314,7 @@ def get_unwanted_terms_from_config():
 UNWANTED_TERMS = get_unwanted_terms_from_config()
 
 def clean_title(raw_title: str) -> str:
+    """Clean and normalize video title for subtitle searching."""
     UNWANTED_TERMS = get_unwanted_terms_from_config()
     UNWANTED_CHARS = r"[\[\]\(\)\{\}_\+\.-]"
     WHITELIST = {"a", "i", "z", "o", "u"}
@@ -328,6 +343,7 @@ def clean_title(raw_title: str) -> str:
 
 
 def check_existing_subtitles(mkv_path: Path) -> dict:
+    """Check which subtitle languages already exist for video file."""
     base = mkv_path.with_suffix('')
     return {
         lang: (srt_file := base.with_name(f"{base.name}.{lang}.srt")).exists() 
@@ -335,10 +351,12 @@ def check_existing_subtitles(mkv_path: Path) -> dict:
         for lang in LANGUAGES
     }
 def extract_sxxexx_code(name: str) -> str | None:
+    """Extract season/episode code from filename."""
     match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
     return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
 unknown_sxxexx_files = []
 def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, candidate_index=None, force_download=False):
+    """Download the top-rated subtitles for specified language and video."""
     global unknown_sxxexx_files
     headers = {
         "Api-Key": API_KEY,
@@ -440,6 +458,7 @@ def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, ca
         except Exception as e:
             print_and_log_colored(f"{acq_tag()} {Fore.RED}Download error: {e}{Style.RESET_ALL}", Fore.RED)
 def print_subtitle_list(subs, lang, color=Fore.LIGHTBLUE_EX):
+    """Display formatted list of available subtitles."""
     for i, item in enumerate(subs, 1):
         file_name = item['attributes']['files'][0]['file_name']
         downloads = item['attributes']['download_count']
@@ -449,6 +468,7 @@ def print_subtitle_list(subs, lang, color=Fore.LIGHTBLUE_EX):
         print_and_log(line)
     print_and_log("")
 def filter_subtitles_by_query(subs, query):
+    """Filter subtitle results by search query terms."""
     match = re.search(r'(.*?)([\s._-]?)(19|20)\\d{2}', query)
     if match:
         left = match.group(1).strip().split()
@@ -463,6 +483,7 @@ def filter_subtitles_by_query(subs, query):
             filtered.append(sub)
     return filtered
 def handle_api_error(response, request_details=None):
+    """Handle and display API error responses with detailed information."""
     if response.status_code == 403:
         print_and_log(f"{acq_tag()} {Fore.RED}403 Forbidden: Access denied by OpenSubtitles API.{Style.RESET_ALL}")
         print_and_log(f"{acq_tag()} This is usually due to account, content, or region restrictions.")
