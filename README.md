@@ -47,18 +47,6 @@
 
 <br>
 
-## 📋 Table of Contents
-1. [🔧 Installing and Configuring Subservient](#-installing-and-configuring-subservient)
-2. [🎯 Using Subservient](#-using-subservient)
-3. [⚙️ How Subservient Works: The Four-Phase Automation Process](#️-how-subservient-works-four-phase-automation)
-4. [🔍 Troubleshooting Common Issues](#-troubleshooting-common-issues)
-5. [❓ Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
-6. [📚 Changelog](#-changelog)
-7. [🚀 Future Updates & Roadmap](#-future-updates--roadmap)
-8. [💝🎉 Support & Donations](#-support--donations)
-9. [📄 License](#-license)
-
-
 ## 📽️ Subservient Installation & Configuration (video) Guide
 
 The video below provides a comprehensive walkthrough for installing and configuring Subservient on a fresh Windows machine.  
@@ -70,6 +58,19 @@ Click the link if you would like to follow the video guide, or scroll down to co
     <img src="https://img.youtube.com/vi/33lcr6dCtRw/0.jpg" alt="Subservient Instructional Video" width="480"/>
   </a>
 </div>
+
+<br>
+
+## 📋 Table of Contents
+1. [🔧 Installing and Configuring Subservient](#-installing-and-configuring-subservient)
+2. [🎯 Using Subservient](#-using-subservient)
+3. [⚙️ How Subservient Works: The Four-Phase Automation Process](#️-how-subservient-works-four-phase-automation)
+4. [🔍 Troubleshooting Common Issues](#-troubleshooting-common-issues)
+5. [❓ Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
+6. [📚 Changelog](#-changelog)
+7. [🚀 Future Updates & Roadmap](#-future-updates--roadmap)
+8. [💝🎉 Support & Donations](#-support--donations)
+9. [📄 License](#-license)
 
 <br>
 
