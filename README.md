@@ -822,11 +822,12 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🐛 **2025-07-28** | v0.80 | 🎉 ALPHA release | Video synchronisation is fully operational, repo is public! |
 | 🐛 **2025-07-20** | v0.79 | 🔥 Single/batch video syncs now work! | Launch day coming soon |
 | 🔧 **2025-07-05** | v0.78 | 🎛️ Manual Verification | Added manual offset verification menu and editor |
 | 🧪 **2025-06-25** | v0.75 | 🔍 Testing Phase | Extensive testing with 200+ personal video collection |
 
-> 🎉 **Current Version: v0.79** - After a whole bunch of testing with several video libraries, we're now at a point where single/batch video processing fully works. The next step will be an instructional video and then we're good to go for an alpha launch.
+> 🎉 **Current Version: v0.80** - After another good week of testing and creating an instructional video, the **ALPHA** version of Subservient is now live. Enjoy! 
 
 <br>
 
