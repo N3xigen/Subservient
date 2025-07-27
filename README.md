@@ -1,6 +1,6 @@
 # 🎬 Subservient Subtitle Automation Suite
 
-![Version](https://img.shields.io/badge/version-v0.79-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-v0.80-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
@@ -960,7 +960,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.79-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.80-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
