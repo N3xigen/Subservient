@@ -58,6 +58,19 @@
 8. [💝🎉 Support & Donations](#-support--donations)
 9. [📄 License](#-license)
 
+
+## 📽️ Subservient Installation & Configuration (video) Guide
+
+The video below provides a comprehensive walkthrough for installing and configuring Subservient on a fresh Windows machine.  
+It covers Python setup, required dependencies, and the use of external tools like ffmpeg and mkvtoolnix.
+Click the link if you would like to follow the video guide, or scroll down to consult the ReadMe file.
+
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=33lcr6dCtRw">
+    <img src="https://img.youtube.com/vi/33lcr6dCtRw/0.jpg" alt="Subservient Instructional Video" width="480"/>
+  </a>
+</div>
+
 <br>
 
 ## 🔧 INSTALLING AND CONFIGURING SUBSERVIENT
