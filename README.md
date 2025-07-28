@@ -852,6 +852,7 @@ Subservient is actively developed with exciting new features planned! Here's wha
 | Priority | Feature | Target | Description |
 |----------|---------|--------|-------------|
 | 🤝 **Planned** | 📺 TV-Series Support | v0.9 BETA | Complete automation for TV shows with episode detection |
+| 📋 **High** | 📚 Containerization for easy use | v0.95 | Packaging everything in a container/executable to make it easy to install |
 | 🔥 **High** | 🛠️ 'Tools' option in Subservient menu & complete LINUX bugfixing  | v1.00 RELEASE | manual syncing, batch-renaming, muxing/de-muxing, manual subtitle offset tools, you name it! |
 | ⚡ **Medium** | 📊 Smarter subtitle search queries | v1.06 | More fallbacks for more comprehensive searches |
 | ⚡ **Medium** | 🔄 Asynchronous synchronisation (whaat?) | v1.08 | Synchronizing multiple videos simultaneously
