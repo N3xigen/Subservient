@@ -54,7 +54,7 @@ It covers Python setup, required dependencies, and the use of external tools lik
 Click the link if you would like to follow the video guide, or scroll down to consult the ReadMe file.
 
   <a href="https://www.youtube.com/watch?v=33lcr6dCtRw">
-    <img src="https://img.youtube.com/vi/33lcr6dCtRw/0.jpg" alt="Subservient Instructional Video" width="480"/>
+    <img src="https://i.ibb.co/6JBG73qP/Screenshot-2025-07-28-112319.png" alt="Screenshot-2025-07-28-112319" alt="Subservient Instructional Video" width="480"/>
   </a>
 
 <br>
