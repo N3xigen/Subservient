@@ -7,6 +7,7 @@
 ![FFmpeg](https://img.shields.io/badge/requires-FFmpeg-red.svg)
 ![Dependencies](https://img.shields.io/badge/dependencies-8%20packages-green.svg)
 
+Trello board where I keep track of reported bugs and features ---> https://trello.com/b/unbhHN3v/subservient 
 ```
   _________    ___.                             .__               __   
  /   _____/__ _\_ |__   ______ ______________  _|__| ____   _____/  |_ 
@@ -363,6 +364,12 @@ Move `subordinate.py` to where you want to process videos, then run it:
 | **Single Movie** | Move into folder with movie | Processes one movie |
 | **Batch Movies** | Move next to movie folders | Processes all folders |
 | **TV Series** | Move into series folder + `series_mode=true` | All episodes |
+
+Please note that, in movie mode, you cannot have multiple movie files in the same folder.
+Doing so will cause Subservient to look for the largest movie file, process that one, and either move or delete all the other movies in there. 
+Only in TV Series mode can you have multiple movie files in the same folder.
+If your intention is to batch process multiple movies in Movie Mode, then make sure every movie file is in a separate folder.
+For instance, batch processing for movies is achieved when `subordinate.py` is placed next to a bunch of separate folders with a single movie file in them.
 
 > ⚠️ **Movement Rules:** Use cut+paste (Ctrl+X+V), NOT copy+paste. Multiple copies will confuse Subservient.
 
