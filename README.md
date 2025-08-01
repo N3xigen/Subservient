@@ -1,6 +1,6 @@
 # 🎬 Subservient Subtitle Automation Suite
 
-![Version](https://img.shields.io/badge/version-v0.80-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-v0.81-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
@@ -290,6 +290,8 @@ Open `.config` and configure the required settings:
 | **api_key** | OpenSubtitles API key | `abc123` | ✅ |
 | **languages** | Languages to download | `en,nl,fr` | ✅ |
 | **series_mode** | TV series vs movies | `false` | - |
+| **preserve_forced_subtitles** | Keep FORCED subtitle tracks | `false` | - |
+| **preserve_unwanted_subtitles** | Keep all subtitle languages | `false` | - |
 
 <details>
 <summary>🔧 <strong>All Configuration Options</strong></summary>
@@ -300,6 +302,8 @@ Open `.config` and configure the required settings:
 | **top_downloads** | Subtitles to test per batch | `3` |
 | **accept_offset_threshold** | Auto-accept sync threshold | `configurable` |
 | **reject_offset_threshold** | Auto-reject sync threshold | `configurable` |
+| **preserve_forced_subtitles** | Keep FORCED subtitle tracks | `false` |
+| **preserve_unwanted_subtitles** | Keep all subtitle languages | `false` |
 | **audio_track_languages** | Audio tracks to keep | `en,nl,ja` |
 | **skip_dirs** | Folders to ignore | `extras,trailers` |
 | **unwanted_terms** | Filter from search | `720p,BluRay` |
@@ -307,6 +311,31 @@ Open `.config` and configure the required settings:
 | **pause_seconds** | Pause between phases | `3` |
 
 > ⚠️ **Warning:** `delete_extra_videos=true` **PERMANENTLY DELETES** all video files except the largest in each folder.
+
+<details>
+<summary>🎯 <strong>Subtitle Preservation Logic</strong> - Advanced track management settings ✚</summary>
+
+**🎮 Smart Preservation System**: Control exactly what subtitle content gets preserved during processing:
+
+| Setting Combination | FORCED Subtitles | Regular Subtitles | Use Case |
+|---------------------|------------------|-------------------|----------|
+| **preserve_forced_subtitles=true**<br>**preserve_unwanted_subtitles=true** | ✅ ALL languages | ✅ ALL languages | **Maximum preservation** - Keep everything |
+| **preserve_forced_subtitles=true**<br>**preserve_unwanted_subtitles=false** | ✅ Wanted languages only | ❌ Unwanted languages removed | **FORCED-priority** - Keep FORCED for wanted langs |
+| **preserve_forced_subtitles=false**<br>**preserve_unwanted_subtitles=true** | ❌ Treated as regular | ✅ ALL languages | **Language-priority** - Keep all but no FORCED special treatment |
+| **preserve_forced_subtitles=false**<br>**preserve_unwanted_subtitles=false** | ❌ Treated as regular | ❌ Unwanted languages removed | **Minimal** - Only wanted languages |
+
+**🔧 What are FORCED subtitles?**
+- Used for foreign dialogue in otherwise native-language movies
+- Example: Japanese dialogue in an English movie
+- Often essential for understanding key plot points
+
+**💡 Recommended Settings:**
+- **Keep everything**: `preserve_forced_subtitles=true, preserve_unwanted_subtitles=true`
+- **Perserve languages in language setting only, including forced subtitles**: `preserve_forced_subtitles=true, preserve_unwanted_subtitles=false`
+- **Perserve subtitles for all encountered languages, but remove forced subtitles**: `preserve_forced_subtitles=false, preserve_unwanted_subtitles=true`
+- **Only preferred languages, nothing else**: `preserve_forced_subtitles=false, preserve_unwanted_subtitles=false`
+
+</details>
 
 <br>
 <details>
@@ -319,6 +348,12 @@ Open `.config` and configure the required settings:
 **🔍 Search & Performance:**
 - **max_search_results**: More options but slower (Free: 6, VIP: 12+)
 - **top_downloads**: Lower preserves download quota (Free: 1-2, VIP: 3-5)
+- **download_retry_503**: Retry attempts for server overload (recommended: 6)
+
+**🎯 Subtitle Management:**
+- **preserve_forced_subtitles**: Keep FORCED subtitle tracks (for foreign dialogue)
+- **preserve_unwanted_subtitles**: Keep subtitles in non-wanted languages
+- **languages**: Controls which subtitles are downloaded and synchronized
 
 **📁 Content Management:**
 - **skip_dirs**: Folders to ignore (`extras,trailers,samples`)
@@ -462,14 +497,32 @@ Each phase calls the next automatically. User input only for edge cases.
 ### 🎮 Phase 1: Setup (`subordinate.py`)
 Initialize environment, verify dependencies, present main menu.
 
-### 📤 Phase 2: Extraction (`extraction.py`)  
+### 📤 PHASE 2: EXTRACTION (`extraction.py`)  
 Extract internal subtitles, auto-detect languages, clean unwanted tracks.
 
 **Why extract first?** Internal subtitles are already perfectly synchronized and don't count against your OpenSubtitles download quota. Using what's already available is faster than searching online.
 
+<details>
+<summary><strong>📤 Enhanced Extraction Features</strong></summary>
+
+| Feature | Description |
+|---------|-------------|
+| 🎯 **Smart FORCED Detection** | Automatically identifies and preserves FORCED subtitle tracks |
+| 🌐 **Language Auto-Detection** | Uses AI to detect subtitle languages with 95%+ accuracy |
+| 🧹 **Intelligent Cleanup** | Removes unwanted audio/subtitle tracks based on your preferences |
+| 🔄 **Preservation Logic** | Advanced control over what gets kept vs removed |
+| 📊 **Comprehensive Logging** | Detailed tracking of all extraction decisions |
+
+**Advanced preservation options:**
+- **FORCED subtitle protection**: Never accidentally remove essential foreign dialogue subtitles
+- **Audio track filtering**: Keep only wanted language audio tracks (saves space)
+- **Flexible language handling**: Preserve everything or be selective based on your needs
+
+</details>
+
 > ✅ **Phase 2 Summary**
 > 
-> Uses existing internal subtitles before searching online, saves download quota, ensures perfect sync, and cleans video files by removing unwanted tracks.
+> Uses existing internal subtitles before searching online, saves download quota, ensures perfect sync, intelligently manages FORCED subtitles, and cleans video files by removing unwanted tracks.
 
 ### 🌐 PHASE 3: SUBTITLE ACQUISITION (`acquisition.py`)
 
@@ -490,12 +543,18 @@ Extract internal subtitles, auto-detect languages, clean unwanted tracks.
 - **Fallback**: Tries variations without year or with different formatting
 - **Manual**: Allows custom search terms for difficult titles
 - **Language-specific**: Tailored queries per target language
+- **Enhanced retry logic**: Automatic retries for server overload (503 errors)
 
 **Options for missing subtitles:**
 1. Manual search with custom terms
 2. Delete problematic videos
 3. Increase download limits  
 4. Skip temporarily or permanently
+
+**Improved reliability:**
+- **JWT token management**: Automatic login and session handling
+- **503 error handling**: Smart retries when OpenSubtitles servers are busy
+- **Rate limit protection**: Respects API limits to prevent account suspension
 
 </details>
 
@@ -540,6 +599,19 @@ Extract internal subtitles, auto-detect languages, clean unwanted tracks.
 ## 🔍 TROUBLESHOOTING COMMON ISSUES
 
 Here are some common issues and solutions to help you get Subservient up and running:
+
+<details>
+<summary>0. <strong>File Rename Errors During Extraction</strong></summary>
+
+**💥 Symptom:** Error about "Cannot rename subtitle file - target already exists" during extraction.
+
+**✅ Solution:** 
+- This happens when Subservient was interrupted previously and left incomplete files
+- **Remove incomplete subtitle files**: Look for files like `*.und0.srt`, `*.temp.srt`, or duplicate `.forced.srt` files
+- **Clean restart**: Delete any partial/temporary subtitle files and run Subservient again
+- Subservient will show you exactly which files are causing conflicts
+
+</details>
 
 ### 🐍 Python Issues
 
@@ -643,6 +715,20 @@ Here are some common issues and solutions to help you get Subservient up and run
 - ✔️ Verify API consumer exists on OpenSubtitles website
 - ✔️ Check account status (not banned/suspended)
 - ✔️ Verify API status on OpenSubtitles website
+- ✔️ **New**: Check for 503 errors in logs - these are temporary server overload issues that Subservient handles automatically
+
+</details>
+
+<details>
+<summary>8b. <strong>503 Service Unavailable Errors</strong></summary>
+
+**💥 Symptom:** Repeated 503 errors when downloading subtitles, even with valid credentials.
+
+**✅ Solution:** 
+- **This is normal!** 503 errors indicate OpenSubtitles servers are temporarily overloaded
+- **Subservient handles this automatically** with intelligent retry logic
+- **If persistent**: Increase `download_retry_503` setting in `.config` (default: 6)
+- **Check logs**: Subservient shows retry attempts and automatically backs off when needed
 
 </details>
 
@@ -834,12 +920,13 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
-| 🐛 **2025-07-28** | v0.80 | 🎉 ALPHA release | Video synchronisation is fully operational, repo is public! |
+| 💬 **2025-08-01** | v0.81 | 🎯 7 bugs fixed! | More in-depth (forced)subtitle preservation, language code mismatch fix and more! |
+| 🔥 **2025-07-28** | v0.80 | 🎉 ALPHA release | Video synchronisation is fully operational, repo is public! |
 | 🐛 **2025-07-20** | v0.79 | 🔥 Single/batch video syncs now work! | Launch day coming soon |
 | 🔧 **2025-07-05** | v0.78 | 🎛️ Manual Verification | Added manual offset verification menu and editor |
 | 🧪 **2025-06-25** | v0.75 | 🔍 Testing Phase | Extensive testing with 200+ personal video collection |
 
-> 🎉 **Current Version: v0.80** - After another good week of testing and creating an instructional video, the **ALPHA** version of Subservient is now live. Enjoy! 
+> 🎉 **Current Version: v0.81** - Seven bugs fixed, Subservient should be significantly more robust now. See commit for more details.
 
 <br>
 
@@ -973,7 +1060,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.80-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.81-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)

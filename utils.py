@@ -6,6 +6,42 @@ import subprocess
 import time
 import re
 
+def ensure_file_writable(file_path):
+    """Ensure a file is writable by setting appropriate permissions."""
+    try:
+        if os.name == 'nt':
+            subprocess.run(['attrib', '-r', str(file_path)], capture_output=True, check=False)
+        else:
+            os.chmod(file_path, 0o644)
+        return True
+    except Exception:
+        return False
+
+def ensure_directory_writable(dir_path):
+    """Ensure a directory is writable by setting appropriate permissions."""
+    try:
+        if os.name == 'nt':
+            subprocess.run(['attrib', '-r', str(dir_path), '/d'], capture_output=True, check=False)
+        else: 
+            os.chmod(dir_path, 0o755)
+        return True
+    except Exception:
+        return False
+
+def fix_permissions_proactively(file_path):
+    """Proactively fix permissions for a file and its parent directory."""
+    fixed_items = []
+    try:
+        parent_dir = file_path.parent
+        if ensure_directory_writable(parent_dir):
+            fixed_items.append(f"directory {parent_dir.name}")
+        if file_path.exists() and ensure_file_writable(file_path):
+            fixed_items.append(f"file {file_path.name}")
+            
+        return fixed_items
+    except Exception:
+        return []
+
 ASCII_ART = r"""
   _________    ___.                             .__               __   
  /   _____/__ _\_ |__   ______ ______________  _|__| ____   _____/  |_ 
@@ -42,6 +78,25 @@ LANG_3TO2_MAP = {
     'udm': 'udm', 'sah': 'sah', 'tuv': 'tyv', 'sco': 'sco', 'gag': 'gag',
 }
 
+LANG_2TO3_PREFERRED = {
+    'en': 'eng', 'nl': 'dut', 'de': 'ger', 'fr': 'fre', 'es': 'spa', 'it': 'ita', 'pt': 'por',
+    'ru': 'rus', 'ja': 'jpn', 'ko': 'kor', 'zh': 'zho', 'sv': 'swe', 'no': 'nor', 'da': 'dan',
+    'fi': 'fin', 'pl': 'pol', 'hu': 'hun', 'cs': 'ces', 'sk': 'slk', 'sl': 'slv', 'et': 'est',
+    'lv': 'lav', 'lt': 'lit', 'el': 'ell', 'tr': 'tur', 'ar': 'ara', 'he': 'heb', 'hi': 'hin',
+    'th': 'tha', 'vi': 'vie', 'id': 'ind', 'ms': 'msa', 'tl': 'tgl', 'uk': 'ukr', 'bg': 'bul',
+    'hr': 'hrv', 'sr': 'srp', 'ro': 'ron', 'ca': 'cat', 'eu': 'eus', 'gl': 'glg', 'is': 'isl',
+    'mt': 'mal', 'mk': 'mkd', 'sq': 'alb', 'bs': 'bos', 'az': 'aze', 'kk': 'kaz', 'uz': 'uzb',
+    'tt': 'tat', 'ky': 'kir', 'hy': 'arm', 'ka': 'geo', 'my': 'mya', 'km': 'khm', 'lo': 'lao',
+    'ne': 'nep', 'pa': 'pan', 'si': 'sin', 'ta': 'tam', 'te': 'tel', 'kn': 'kan', 'ml': 'mal',
+    'or': 'ori', 'gu': 'guj', 'bn': 'ben', 'as': 'asm', 'mr': 'mar', 'sa': 'san', 'ur': 'urd',
+    'fa': 'fas', 'ku': 'kur', 'ps': 'pus', 'sd': 'sind', 'so': 'som', 'am': 'amh', 'ti': 'tir',
+    'om': 'orm', 'sw': 'swa', 'rw': 'kin', 'rn': 'run', 'ny': 'nya', 'zu': 'zul', 'xh': 'xho',
+    'af': 'afr', 'ig': 'ibo', 'yo': 'yor', 'ha': 'hau', 'sn': 'sna', 'tn': 'tsn', 'ts': 'tso',
+    've': 'ven', 'wo': 'wol', 'fo': 'fao', 'gn': 'grn', 'ay': 'aym', 'qu': 'que', 'mg': 'mlg',
+    'nv': 'nav', 'gd': 'gla', 'ga': 'gle', 'kw': 'cor', 'cy': 'cym', 'av': 'ava', 'ce': 'che',
+    'cu': 'chu', 'cv': 'chv', 'kv': 'kom'
+}
+
 def get_subservient_folder():
     """Get the Subservient anchor folder path from config file."""
     config_dir = Path(user_config_dir()) / "Subservient"
@@ -67,6 +122,30 @@ def map_lang_3to2(code):
     """Convert 3-letter language code to 2-letter equivalent."""
     code = code.lower()
     return LANG_3TO2_MAP.get(code, code)
+
+def are_languages_equivalent(lang1, lang2):
+    """Check if two language codes represent the same language (handles both 2-letter and 3-letter codes)."""
+    lang1 = (lang1 or '').lower()
+    lang2 = (lang2 or '').lower()
+    
+    if lang1 == lang2:
+        return True
+    
+    if len(lang1) == 3:
+        lang1_2letter = map_lang_3to2(lang1)
+    else:
+        lang1_2letter = lang1
+        
+    if len(lang2) == 3:
+        lang2_2letter = map_lang_3to2(lang2)
+    else:
+        lang2_2letter = lang2
+    
+    return lang1_2letter == lang2_2letter
+
+def lang_in_list(target_lang, lang_list):
+    """Check if target language is semantically present in language list (handles different 3-letter variants)."""
+    return any(are_languages_equivalent(target_lang, lang) for lang in lang_list)
 
 def get_internal_subtitle_languages(video_path):
     """Extract internal subtitle languages from video file using ffprobe."""

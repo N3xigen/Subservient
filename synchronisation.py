@@ -219,7 +219,9 @@ for root, dirs, files in os.walk(anchor_path):
 config_values = read_config_as_dict(CONFIG_PATH)
 pause_seconds = int(float(config_values.get('pause_seconds', 3)))
 ACCEPT_OFFSET_THRESHOLD = float(config_values.get('accept_offset_threshold', 0.05))
-REJECT_OFFSET_THRESHOLD = float(config_values.get('reject_offset_threshold', 1.2))
+REJECT_OFFSET_THRESHOLD = float(config_values.get('reject_offset_threshold', 2.5))
+PRESERVE_FORCED_SUBTITLES = config_values.get('preserve_forced_subtitles', 'false').lower() in ('true', '1', 'yes', 'on')
+PRESERVE_UNWANTED_SUBTITLES = config_values.get('preserve_unwanted_subtitles', 'false').lower() in ('true', '1', 'yes', 'on')
 drift_marked = False
 
 def read_languages_from_config(config_path):
@@ -1451,8 +1453,15 @@ if drift_marked:
     os.system(f'python "{os.path.join(script_dir, "acquisition.py")}"')
     sys.exit(0)
 
-print_and_log(f"\n{sync_tag()} {Fore.CYAN}Going through internal subtitle cleanup. This can take a while with many videos..{Style.RESET_ALL}")
-prompt_and_cleanup_internal_subs()
+print_and_log(f"\n{sync_tag()} {Fore.CYAN}Checking internal subtitle cleanup requirements...{Style.RESET_ALL}")
+
+if PRESERVE_UNWANTED_SUBTITLES:
+    print_and_log(f"{sync_tag()} {Fore.GREEN}Skipping internal subtitle cleanup - preserve_unwanted_subtitles is enabled{Style.RESET_ALL}")
+    print_and_log(f"{sync_tag()} {Fore.CYAN}preserve_unwanted_subtitles: {PRESERVE_UNWANTED_SUBTITLES}{Style.RESET_ALL}")
+else:
+    print_and_log(f"{sync_tag()} {Fore.YELLOW}Internal subtitle cleanup enabled - preserve_unwanted_subtitles is false{Style.RESET_ALL}")
+    print_and_log(f"{sync_tag()} {Fore.CYAN}Going through internal subtitle cleanup. This can take a while with many videos..{Style.RESET_ALL}")
+    prompt_and_cleanup_internal_subs()
 
 print_and_log(f"\n{sync_tag()} {Fore.CYAN}Performing final cleanup...{Style.RESET_ALL}")
 final_cleanup_prompt_and_cleanup()

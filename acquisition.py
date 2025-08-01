@@ -166,6 +166,7 @@ PASSWORD = setup['password']
 LANGUAGES = [lang.strip() for lang in setup['languages'].split(',') if lang.strip()]
 MAX_SEARCH_RESULTS = int(setup.get('max_search_results', 50))
 TOP_DOWNLOADS = int(setup['top_downloads'])
+DOWNLOAD_RETRY_503 = int(setup.get('download_retry_503', 6))
 SERIES_MODE = setup['series_mode']
 def acq_tag():
     """Return formatted acquisition tag for console output."""
@@ -238,7 +239,7 @@ def get_token_from_config():
                 value = lines[j].strip()
                 if value and not value.startswith('[') and not value.startswith('--') and not value.startswith('#'):
                     return value
-                elif value.startswith('['):
+                elif value.startswith('[') or value.startswith('--'):
                     break
                 j += 1
         elif line.strip().startswith('token ='):
@@ -396,39 +397,61 @@ def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, ca
             else:
                 file_name = f"{base_name}.srt"
             url = f"{API_URL}/download"
-            max_retries = 3
-            for attempt in range(1, max_retries + 1):
+            max_retries_503 = DOWNLOAD_RETRY_503
+            
+            
+            for attempt in range(1, max_retries_503 + 1):
                 try:
                     resp = requests.post(url, headers=headers, json={"file_id": file_id})
                 except Exception as e:
                     print_and_log_colored(f"{acq_tag()} {Fore.RED}HTTP POST error: {e}{Style.RESET_ALL}", Fore.RED)
                     resp = None
                 time.sleep(0.5)
+                
                 if resp is None or resp.status_code >= 400:
-                    if attempt < max_retries:
-                        print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}HTTP error (status {getattr(resp, 'status_code', 'N/A')}). Retrying in {int(PAUSE_SECONDS)}s... (attempt {attempt}/{max_retries}){Style.RESET_ALL}", Fore.YELLOW)
+                    if resp and resp.status_code == 503:
+                        if attempt < max_retries_503:
+                            delay = min(5 * attempt, 30)
+                            print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}503 Service Unavailable (server overloaded). Retrying in {delay}s... (attempt {attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
+                            time.sleep(delay)
+                            continue
+                        else:
+                            print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download after {max_retries_503} attempts (503 Service Unavailable). OpenSubtitles servers are overloaded. Skipping.{Style.RESET_ALL}", Fore.RED)
+                            break
+                    elif attempt < max_retries_503:
+                        print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}HTTP error (status {getattr(resp, 'status_code', 'N/A')}). Retrying in {int(PAUSE_SECONDS)}s... (attempt {attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
                         time.sleep(PAUSE_SECONDS)
                         continue
                     else:
-                        print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download after {max_retries} attempts (HTTP error). Skipping.{Style.RESET_ALL}", Fore.RED)
+                        print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download after {max_retries_503} attempts (HTTP error). Skipping.{Style.RESET_ALL}", Fore.RED)
                         break
                 elif resp.status_code == 200:
                     download_link = resp.json().get("link")
                     if download_link:
-                        for srt_attempt in range(1, max_retries + 1):
+                        for srt_attempt in range(1, max_retries_503 + 1):
                             try:
                                 srt_resp = requests.get(download_link)
                             except Exception as e:
                                 print_and_log_colored(f"{acq_tag()} {Fore.RED}HTTP GET error: {e}{Style.RESET_ALL}", Fore.RED)
                                 srt_resp = None
                             time.sleep(0.5)
+                            
                             if srt_resp is None or srt_resp.status_code >= 400:
-                                if srt_attempt < max_retries:
-                                    print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}SRT HTTP error (status {getattr(srt_resp, 'status_code', 'N/A')}). Retrying in {int(PAUSE_SECONDS)}s... (attempt {srt_attempt}/{max_retries}){Style.RESET_ALL}", Fore.YELLOW)
+                                if srt_resp and srt_resp.status_code == 503:
+                                    if srt_attempt < max_retries_503:
+                                        delay = min(5 * srt_attempt, 30)
+                                        print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}SRT 503 Service Unavailable. Retrying in {delay}s... (attempt {srt_attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
+                                        time.sleep(delay)
+                                        continue
+                                    else:
+                                        print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download SRT after {max_retries_503} attempts (503 Service Unavailable). Skipping.{Style.RESET_ALL}", Fore.RED)
+                                        break
+                                elif srt_attempt < max_retries_503:
+                                    print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}SRT HTTP error (status {getattr(srt_resp, 'status_code', 'N/A')}). Retrying in {int(PAUSE_SECONDS)}s... (attempt {srt_attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
                                     time.sleep(PAUSE_SECONDS)
                                     continue
                                 else:
-                                    print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download SRT after {max_retries} attempts (HTTP error). Skipping.{Style.RESET_ALL}", Fore.RED)
+                                    print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download SRT after {max_retries_503} attempts (HTTP error). Skipping.{Style.RESET_ALL}", Fore.RED)
                                     break
                             elif srt_resp.status_code == 200:
                                 srt_data = srt_resp.content
