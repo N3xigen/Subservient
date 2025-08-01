@@ -7,6 +7,7 @@
 ![FFmpeg](https://img.shields.io/badge/requires-FFmpeg-red.svg)
 ![Dependencies](https://img.shields.io/badge/dependencies-8%20packages-green.svg)
 
+Trello board where I keep track of reported bugs and features ---> https://trello.com/b/unbhHN3v/subservient 
 ```
   _________    ___.                             .__               __   
  /   _____/__ _\_ |__   ______ ______________  _|__| ____   _____/  |_ 
@@ -54,7 +55,7 @@ It covers Python setup, required dependencies, and the use of external tools lik
 Click the link if you would like to follow the video guide, or scroll down to consult the ReadMe file.
 
   <a href="https://www.youtube.com/watch?v=33lcr6dCtRw">
-    <img src="https://img.youtube.com/vi/33lcr6dCtRw/0.jpg" alt="Subservient Instructional Video" width="480"/>
+    <img src="https://i.ibb.co/6JBG73qP/Screenshot-2025-07-28-112319.png" alt="Screenshot-2025-07-28-112319" alt="Subservient Instructional Video" width="480"/>
   </a>
 
 <br>
@@ -398,6 +399,12 @@ Move `subordinate.py` to where you want to process videos, then run it:
 | **Single Movie** | Move into folder with movie | Processes one movie |
 | **Batch Movies** | Move next to movie folders | Processes all folders |
 | **TV Series** | Move into series folder + `series_mode=true` | All episodes |
+
+Please note that, in movie mode, you cannot have multiple movie files in the same folder.
+Doing so will cause Subservient to look for the largest movie file, process that one, and either move or delete all the other movies in there. 
+Only in TV Series mode can you have multiple movie files in the same folder.
+If your intention is to batch process multiple movies in Movie Mode, then make sure every movie file is in a separate folder.
+For instance, batch processing for movies is achieved when `subordinate.py` is placed next to a bunch of separate folders with a single movie file in them.
 
 > ⚠️ **Movement Rules:** Use cut+paste (Ctrl+X+V), NOT copy+paste. Multiple copies will confuse Subservient.
 
@@ -939,6 +946,7 @@ Subservient is actively developed with exciting new features planned! Here's wha
 | Priority | Feature | Target | Description |
 |----------|---------|--------|-------------|
 | 🤝 **Planned** | 📺 TV-Series Support | v0.9 BETA | Complete automation for TV shows with episode detection |
+| 📋 **High** | 📚 Containerization for easy use | v0.95 | Packaging everything in a container/executable to make it easy to install |
 | 🔥 **High** | 🛠️ 'Tools' option in Subservient menu & complete LINUX bugfixing  | v1.00 RELEASE | manual syncing, batch-renaming, muxing/de-muxing, manual subtitle offset tools, you name it! |
 | ⚡ **Medium** | 📊 Smarter subtitle search queries | v1.06 | More fallbacks for more comprehensive searches |
 | ⚡ **Medium** | 🔄 Asynchronous synchronisation (whaat?) | v1.08 | Synchronizing multiple videos simultaneously
