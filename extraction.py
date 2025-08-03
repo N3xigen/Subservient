@@ -338,8 +338,6 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         return
     
     fixed_items = fix_permissions_proactively(file_path)
-    if fixed_items:
-        print_and_log(f"{ext_tag()} {Fore.CYAN}Enhanced directory permissions for better file operations{Style.RESET_ALL}")
     
     print_movie_header(file_path.stem, movie_idx, total_movies)
     print_and_log(f"{ext_tag()} {Fore.CYAN}Scanning: {shortname(file_path)}{Style.RESET_ALL}")

@@ -76,6 +76,18 @@ def strip_ansi(text):
     """Remove ANSI color codes from text."""
     return ANSI_ESCAPE.sub('', text)
 
+def acq_tag():
+    """Return formatted acquisition tag for console output."""
+    return f"{Style.BRIGHT}{Fore.BLUE}[Acquisition]{Style.RESET_ALL}"
+
+def exit_with_prompt(message="Press any key to exit..."):
+    """Display message and wait for user input before exiting."""
+    try:
+        input(f"{acq_tag()} {message}")
+    except EOFError:
+        os.system("pause")
+    sys.exit(1)
+
 with LOG_FILE.open('a+', encoding='utf-8') as f:
     f.write(strip_ansi(ASCII_ART) + '\n')
     banner = BANNER_LINE.replace('[Phase 3/4]', f'{Style.BRIGHT}{Fore.RED}[Phase 3/4]{Style.RESET_ALL}{Style.BRIGHT}')
@@ -168,9 +180,6 @@ MAX_SEARCH_RESULTS = int(setup.get('max_search_results', 50))
 TOP_DOWNLOADS = int(setup['top_downloads'])
 DOWNLOAD_RETRY_503 = int(setup.get('download_retry_503', 6))
 SERIES_MODE = setup['series_mode']
-def acq_tag():
-    """Return formatted acquisition tag for console output."""
-    return f"{Style.BRIGHT}{Fore.BLUE}[Acquisition]{Style.RESET_ALL}"
 
 def write_runtime_blocks_to_config(token=None, skipped_entries=None):
     """Write runtime configuration blocks to config file."""
@@ -248,14 +257,6 @@ def get_token_from_config():
                 return parts[1].strip()
     return None
 
-def exit_with_prompt(message="Press any key to exit..."):
-    """Display message and wait for user input before exiting."""
-    try:
-        input(f"{acq_tag()} {message}")
-    except EOFError:
-        os.system("pause")
-    sys.exit(1)
-
 def get_jwt_token():
     """Obtain JWT token through API authentication."""
     token = get_token_from_config()
@@ -266,7 +267,7 @@ def get_jwt_token():
     login_headers = {
         "Api-Key": API_KEY,
         "Content-Type": "application/json",
-        "User-Agent": "NexigenSubtitleBot v0.02"
+        "User-Agent": "Subservient v0.85"
     }
     login_payload = {
         "username": USERNAME,

@@ -128,6 +128,33 @@ def write_anchor_to_pathfile():
     with open(pathfile, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
+def write_subordinate_path_to_pathfile():
+    """Write current subordinate.py path to Subservient pathfiles config.
+    
+    Updates the subordinate_path entry in the pathfile to reflect the current
+    location of subordinate.py, enabling other modules to find this script.
+    """
+    config_dir = Path(user_config_dir()) / "Subservient"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    pathfile = config_dir / "Subservient_pathfiles"
+    subordinate_path = str(Path(__file__).resolve())
+    lines = []
+    if pathfile.exists():
+        with open(pathfile, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        found = False
+        for i, line in enumerate(lines):
+            if line.startswith("subordinate_path="):
+                lines[i] = f"subordinate_path={subordinate_path}"
+                found = True
+                break
+        if not found:
+            lines.append(f"subordinate_path={subordinate_path}")
+    else:
+        lines = [f"subordinate_path={subordinate_path}"]
+    with open(pathfile, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
 def print_subservient_checklist():
     """Display pre-flight checklist for Subservient setup and usage.
     
@@ -140,9 +167,9 @@ def print_subservient_checklist():
     if pathfile.exists():
         with open(pathfile, "r", encoding="utf-8") as f:
             for line in f:
-                if line.startswith("subordinate_path="):
-                    subordinate_path = Path(line.split("=", 1)[1].strip())
-                    anchor_path = subordinate_path.parent
+                if line.startswith("utils_path="):
+                    utils_path = Path(line.split("=", 1)[1].strip())
+                    anchor_path = utils_path.parent
                     break
     if anchor_path is None:
         anchor_path = Path(__file__).parent.resolve()
@@ -220,9 +247,86 @@ def print_main_menu():
     print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Scan subtitle coverage")
     print(f"  {Fore.GREEN}3{Style.RESET_ALL} = Show quick instructions")
     print(f"  {Fore.GREEN}4{Style.RESET_ALL} = Install & verify requirements")
-    print(f"  {Fore.GREEN}5{Style.RESET_ALL} = Recreate .config file")
-    print(f"  {Fore.GREEN}6{Style.RESET_ALL} = Open README file")
-    print(f"  {Fore.GREEN}7{Style.RESET_ALL} = Exit\n")
+    print(f"  {Fore.GREEN}5{Style.RESET_ALL} = Extra tools")
+    print(f"  {Fore.GREEN}6{Style.RESET_ALL} = Recreate .config file")
+    print(f"  {Fore.GREEN}7{Style.RESET_ALL} = Open README file")
+    print(f"  {Fore.GREEN}8{Style.RESET_ALL} = Exit\n")
+
+def print_subtitle_cleaner_intro():
+    """Display subtitle cleaner introduction and options."""
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Subtitle Cleaner\n")
+    
+    print(f"{Style.BRIGHT}{Fore.CYAN}What is Subtitle Cleaner?{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Subtitle Cleaner removes unwanted content from .srt subtitle files, such as:{Style.RESET_ALL}")
+    print(f"  • {Fore.LIGHTYELLOW_EX}Advertisements and promotional text{Style.RESET_ALL}")
+    print(f"  • {Fore.LIGHTYELLOW_EX}Website credits and watermarks{Style.RESET_ALL}")
+    print(f"  • {Fore.LIGHTYELLOW_EX}Translator notes and metadata{Style.RESET_ALL}")
+    print(f"  • {Fore.LIGHTYELLOW_EX}Other unwanted content that clutters subtitles{Style.RESET_ALL}")
+    
+    print(f"\n{Fore.WHITE}All original files are automatically backed up to:{Style.RESET_ALL}")
+    print(f"  {Fore.LIGHTBLACK_EX}{utils.get_subservient_folder()}/data/subtitle_backups/{Style.RESET_ALL}")
+    
+    print(f"\n{Style.BRIGHT}{Fore.YELLOW}What would you like to do?{Style.RESET_ALL}\n")
+    print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Clean subtitle files (remove ads and unwanted content)")
+    print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Restore subtitle changes (undo previous cleaning)")
+    print(f"  {Fore.RED}3{Style.RESET_ALL} = Return to extra tools menu\n")
+    print(f"{Style.DIM}Note: Make sure you're in a directory with video files and .srt subtitle files.{Style.RESET_ALL}")
+
+def print_extra_tools_menu():
+    """Display extra tools menu with available tools."""
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Extra Tools\n")
+    
+    print(f"{Style.BRIGHT}{Fore.CYAN}Available Tools:{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Select a tool to use:{Style.RESET_ALL}\n")
+    
+    print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Subtitle Cleaner - Remove ads and unwanted content from subtitle files")
+    print(f"  {Fore.RED}2{Style.RESET_ALL} = Return to main menu\n")
+    
+    print(f"{Style.DIM}More tools will be added in future updates.{Style.RESET_ALL}")
+
+def show_extra_tools_menu():
+    """Handle the Extra Tools menu interface."""
+    while True:
+        print_extra_tools_menu()
+        choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+        if choice == "1":
+            show_subtitle_cleaner()
+        elif choice == "2":
+            break
+        else:
+            print(f"{Fore.RED}Invalid choice. Please select 1 or 2.{Style.RESET_ALL}")
+            time.sleep(1)
+
+def show_subtitle_cleaner():
+    """Handle the Subtitle Cleaner main interface."""
+    while True:
+        print_subtitle_cleaner_intro()
+        choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+        if choice == "1":
+            try:
+                utils.run_subtitle_cleaning_interface()
+            except Exception as e:
+                utils.clear_and_print_ascii(BANNER_LINE)
+                print(f"{Style.BRIGHT}{Fore.RED}[Error]{Style.RESET_ALL}")
+                print(f"{Fore.RED}An error occurred while running subtitle cleaning: {str(e)}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Please make sure all required dependencies are installed.{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
+        elif choice == "2":
+            try:
+                utils.run_subtitle_restore_interface()
+            except Exception as e:
+                utils.clear_and_print_ascii(BANNER_LINE)
+                print(f"{Style.BRIGHT}{Fore.RED}[Error]{Style.RESET_ALL}")
+                print(f"{Fore.RED}An error occurred while running subtitle restore: {str(e)}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Please make sure all required dependencies are installed.{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
+        elif choice == "3":
+            break
+        else:
+            print(f"{Fore.RED}Invalid choice. Please select 1, 2, or 3.{Style.RESET_ALL}")
+            time.sleep(1)
 
 def print_instructions_page(page):
     """Display specified page of usage instructions.
@@ -347,42 +451,84 @@ username=
 password=
 api_url= https://api.opensubtitles.com/api/v1
 
-# - LANGUAGES: Comma-separated list of subtitle languages to download (e.g. nl,en). These are the languages for which subtitles will be searched and downloaded. Very important setting.
-# - AUDIO_TRACK_LANGUAGES: Comma-separated list of audio track languages to keep inside video files (e.g. nl,en,ja). ('undefined' tracks are always kept). Tracks with a language not in the list are removed. Highly recommended to keep english in there, as 95% of all mainstream movies have english tracks only
+# - LANGUAGES: Comma-separated list of subtitle languages to download (e.g. nl,en).
+#   These are the languages for which subtitles will be searched and downloaded.
+#   This setting does NOT decide what happens to extracted languages not in this list, preserve_forced_subtitles and preserve_unwanted_subtitles do.
 languages= en
+
+# - AUDIO_TRACK_LANGUAGES: Comma-separated list of audio track languages to keep inside video files (e.g. nl,en,ja). ('undefined' tracks are always kept).
+#   Tracks with a language not in the list are removed. Highly recommended to keep english in there, as 95% of all mainstream movies have english tracks only.
+#   Set to 'ALL' to disable all audio track processing and keep all audio tracks unchanged (e.g. audio_track_languages = ALL)
 audio_track_languages= en,ja
 
-# ACCEPT_OFFSET_THRESHOLD: If a subtitle synchronisation is below this threshold, then the subtitle will be accepted without needing further manual user verification. Generally speaking: A higher setting saves time, but may result in poorer syncs being accepted unconditionally. A lower setting leads to only very excellently synced subtittles getting through. Try finding your ideal balance by testing it on videos. I personally find that somewhere between 0.05 and 0.1 strikes a good balance
+# - ACCEPT_OFFSET_THRESHOLD: If a subtitle synchronisation is below this threshold, then the subtitle will be accepted without needing further manual user verification.
+#   Generally speaking: A higher setting saves time, but may result in poorer syncs being accepted unconditionally.
+#   A lower setting leads to only very excellently synced subtittles getting through.
+#   Try finding your ideal balance by testing it on videos. I personally find that somewhere between 0.05 and 0.1 strikes a good balance
 accept_offset_threshold= 0.05
 
-# REJECT_OFFSET_THRESHOLD: If a subtitle synchronisation is above this threshold, then the subtitle will be rejected, meaning it will be marked as DRIFT and will be discarded later.Generally speaking: Higher settings will lead to less rejections, but more manual checkups for you to go through. Lower settings will lead to very fast rejections, making videos run out of subtitle candidates very quickly. NOTE: Increasing the threshold is usually recommended when you notice that many movies can't find good subtitle candidates anymore. I personally find that around 2 to 2.5 seconds strikes a good balance. You could try up to 4 seconds if you want to be more lenient, but I would not recommend going any higher, unless some videos are consistently rejected.
+# - REJECT_OFFSET_THRESHOLD: If a subtitle synchronisation is above this threshold, then the subtitle will be rejected, meaning it will be marked as DRIFT and will be discarded later.
+#   Generally speaking: Higher settings will lead to less rejections, but more manual checkups for you to go through.
+#   Lower settings will lead to very fast rejections, making videos run out of subtitle candidates very quickly.
+#   NOTE: Increasing the threshold is usually recommended when you notice that many movies can't find good subtitle candidates anymore.
+#   I personally find that around 2 to 2.5 seconds strikes a good balance.
+#   You could try up to 4 seconds if you want to be more lenient, but I would not recommend going any higher, unless some videos are consistently rejected.
 reject_offset_threshold= 2.5
 
-# - SERIES_MODE: If true, treat all videos in the same folder as episodes of a TV series. If false, only the largest video file in each folder is processed (movie mode).
-# - DELETE_EXTRA_VIDEOS: If true, all extra video files in a folder will be permanently deleted. If false, extra video files will be moved to a folder named by EXTRAS_FOLDER_NAME. This setting is ignored if series_mode is true (in series mode, all videos are kept).
-# - EXTRAS_FOLDER_NAME: Name of the folder where extra video files are moved if DELETE_EXTRA_VIDEOS is false.
+# - SERIES_MODE: If true, treat all videos in the same folder as episodes of a TV series.
+#   If false, only the largest video file in each folder is processed (movie mode).
 series_mode= false
+
+# - DELETE_EXTRA_VIDEOS: If true, all extra video files in a folder will be permanently deleted.
+#   If false, extra video files will be moved to a folder named by EXTRAS_FOLDER_NAME.
+#   This setting is ignored if series_mode is true (in series mode, all videos are kept).
+# - EXTRAS_FOLDER_NAME: Name of the folder where extra video files are moved if DELETE_EXTRA_VIDEOS is false.
 delete_extra_videos= false
 extras_folder_name= extras
 
-# PAUSE_SECONDS: Number of seconds to pause between phases, breaks, and other script waits. If you don't mind about reading what happens in the terminal, a lower value can be set. Example: 5 means a 5 second pause between phases and after summaries. Average speed = 5.
+# - PRESERVE_FORCED_SUBTITLES: If true, forced subtitle tracks will be preserved and not replaced by full subtitles.
+#   Forced subtitles are typically used for foreign dialogue in otherwise native-language movies.
+#   If false, forced subtitles will be treated like regular subtitles and may be replaced.
+# - PRESERVE_UNWANTED_SUBTITLES: If true, all internal and external subtitle tracks will be kept, even those not in the wanted languages list.
+#   If false, subtitle tracks not in the wanted languages will be removed during cleanup.
+#   This only affects cleanup behavior - the languages list still controls which subtitles are downloaded and synchronized.
+preserve_forced_subtitles= false
+preserve_unwanted_subtitles= false
+
+# - PAUSE_SECONDS: Number of seconds to pause between phases, breaks, and other script waits.
+#   If you don't mind about reading what happens in the terminal, a lower value can be set. Example: 5 means a 5 second pause between phases and after summaries. Average speed = 5.
 pause_seconds= 5
 
-# MAX_SEARCH_RESULTS: Maximum number of subtitle search results to consider per movie (e.g. 10). Increasing MAX_SEARCH_RESULTS can help find more options, but may slow down processing. When having a low download limit and many videos to sync, it's strongly recommended to not go higher than 12. As a VIP you can easily go for 20 or more.
-max_search_results= 12
+# - MAX_SEARCH_RESULTS: Maximum number of subtitle search results to consider per movie (e.g. 10).
+#   Increasing MAX_SEARCH_RESULTS can help find more options, but may slow down processing.
+#   When having a low download limit and many videos to sync, it's strongly recommended to not go higher than 12. As a VIP you can easily go for 20 or more.
+max_search_results= 10
 
-# TOP_DOWNLOADS: Number of subtitles to download and test per batch. Keeping TOP_DOWNLOADS low preserves your daily download limit by first testing one batch before downloading another batch. If you need to sync many videos, take 2 to 4 as a maximum. When you have 1000 downloads a day, you could set this to, say, 5-10, for significantly faster processing.
+# - TOP_DOWNLOADS: Number of subtitles to download and test per batch.
+#   Keeping TOP_DOWNLOADS low preserves your daily download limit by first testing one batch before downloading another batch.
+#   If you need to sync many videos, take 2 to 4 as a maximum. When you have 1000 downloads a day, you could set this to, say, 5-10, for significantly faster processing.
 top_downloads= 3
 
-# - SKIP_DIRS: Comma-separated list of directory names to skip when scanning for videos (e.g. extras,trailers,samples). These directories will be ignored during video discovery in both movie and series mode. Use lowercase names, matching is case-insensitive. Common examples: extras, trailers, samples, bonus.
+# - DOWNLOAD_RETRY_503: Number of retry attempts for HTTP 503 Service Unavailable errors during subtitle downloads.
+#   503 errors typically indicate OpenSubtitles servers are temporarily overloaded. Higher values increase chance of success but slow down processing.
+#   Recommended: 6 for good balance between success rate and speed. Set to 3 for faster processing, 10 for maximum persistence.
+download_retry_503= 6
+
+# - SKIP_DIRS: Comma-separated list of directory names to skip when scanning for videos (e.g. extras,trailers,samples).
+#   These directories will be ignored during video discovery in both movie and series mode. Use lowercase names, matching is case-insensitive.
+#   Common examples: extras, trailers, samples, bonus.
 skip_dirs= new folder,nieuwe map,extra,extra's,extras,featurettes,bonus,bonusmaterial,bonus_material,behindthescenes,behind_the_scenes,deletedscenes,deleted_scenes,interviews,makingof,making_of,scenes,trailer,trailers,sample,samples,other,misc,specials,special_features,documentary,docs,docu,promo,promos,bloopers,outtakes
 
-# UNWANTED_TERMS: Comma-separated list of words/terms that should be filtered from subtitle search results. For example, a search can be 'Lord of the Rings 2001 [h.265 HEVC 10 bit]'. The whole latter part would then be removed, so that 'The lord of the Rings 2001' remains, giving a good search query.
+# - UNWANTED_TERMS: Comma-separated list of words/terms that should be filtered from subtitle search results.
+#   For example, a search can be 'Lord of the Rings 2001 [h.265 HEVC 10 bit]'.
+#   The whole latter part would then be removed, so that 'The lord of the Rings 2001' remains, giving a good search query.
+#   Legal disclaimer: These filters clean technical metadata from filenames regardless of source.
+#   Subservient is designed for use with content you legally own or have rights to process.
+#   The inclusion of various format and distribution tags serves technical interoperability purposes only.
 UNWANTED_TERMS= sample,cam,ts,workprint,unrated,uncut,720p,1080p,2160p,480p,4k,uhd,imax,eng,ita,jap,hindi,web,webrip,web-dl,bluray,brrip,bdrip,dvdrip,hdrip,hdtv,remux,x264,x265,h.264,h.265,hevc,avc,hdr,hdr10,hdr10+,dv,dolby.vision,sdr,10bit,8bit,ddp,dd+,dts,aac,ac3,eac3,truehd,atmos,flac,5.1,7.1,2.0,yts,yts.mx,yify,rarbg,fgt,galaxyrg,cm8,evo,sparks,drones,amiable,kingdom,tigole,chd,ddr,hdchina,cinefile,ettv,eztv,aXXo,maven,fitgirl,skidrow,reloaded,codex,cpy,conspir4cy,hoodlum,hive-cm8,extras,final.cut,open.matte,hybrid,version,v2,proper,limited,dubbed,subbed,multi,dual.audio,complete.series,complete.season,Licdom,ac,sub,nl,en,ita,eng,subs,rip,h265,xvid,mp3,mp4,avi,Anime Time,[Anime Time]
-# LEGAL DISCLAIMER: These filters clean technical metadata from filenames regardless of source. Subservient is designed for use with content you legally own or have rights to process. The inclusion of various format and distribution tags serves technical interoperability purposes only.
 
-# RUN_COUNTER: used to count how many full runs have been made. Also used to organize logfiles
-# Don't change if you don't need to, as it may result in overwriting existing logs
+# - RUN_COUNTER: used to count how many full runs have been made. Also used to organize logfiles
+#   Don't change if you don't need to, as it may result in overwriting existing logs
 run_counter= 0
 
 # === END OF SETUP ===
@@ -402,7 +548,7 @@ def import_utils():
     """Import utils module and handle missing file error gracefully.
     
     Dynamically imports the utils module from the registered path and handles
-    cases where utils.py cannot be found via pathfile.
+    cases where utils.py cannot be found via pathfile. Also handles location mismatches.
     """
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
@@ -441,6 +587,9 @@ def import_utils():
     print(f"{Fore.YELLOW}Could not locate utils.py in the expected locations:{Style.RESET_ALL}")
     print(f"  - Pathfile location: {utils_path if utils_path else 'Not found in configuration'}")
     print(f"  - Current directory: {current_dir_utils}")
+    print(f"\n{Fore.WHITE}This usually happens when:{Style.RESET_ALL}")
+    print(f"  1. subordinate.py was moved without the other Subservient files")
+    print(f"  2. The Subservient installation is incomplete or corrupted")
     print(f"\n{Fore.WHITE}To resolve this issue:{Style.RESET_ALL}")
     print(f"  1. Ensure subordinate.py is in the main Subservient folder")
     print(f"  2. Verify all required files are present and intact")
@@ -454,6 +603,7 @@ def ensure_initial_setup():
     
     Verifies that all required Subservient scripts are present and registers their paths.
     Creates pathfile with script locations for cross-module access and exits with error if required scripts are missing.
+    Also detects if subordinate.py has been moved and requires re-setup.
     """
     required_keys = ["subservient_anchor", "subordinate_path", "extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
     required_scripts = ["subordinate.py", "extraction.py", "acquisition.py", "synchronisation.py", "utils.py"]
@@ -461,6 +611,8 @@ def ensure_initial_setup():
     config_dir = Path(user_config_dir()) / "Subservient"
     config_dir.mkdir(parents=True, exist_ok=True)
     pathfile = config_dir / "Subservient_pathfiles"
+    
+    current_subordinate_path = str(Path(__file__).resolve())
 
     def valid_pathfile():
         """Check if pathfile exists and contains all required keys."""
@@ -469,6 +621,67 @@ def ensure_initial_setup():
         lines = pathfile.read_text(encoding="utf-8").splitlines()
         kv = {k.strip(): v.strip() for l in lines if '=' in l for k, v in [l.split('=', 1)]}
         return all(k in kv and kv[k] for k in required_keys)
+    
+    def check_subservient_files_location():
+        """Check if the other Subservient files are still in their expected locations."""
+        if not pathfile.exists():
+            return True
+        
+        try:
+            lines = pathfile.read_text(encoding="utf-8").splitlines()
+            essential_files = ["extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
+            
+            for line in lines:
+                for file_key in essential_files:
+                    if line.startswith(f"{file_key}="):
+                        expected_path = Path(line.split("=", 1)[1].strip())
+                        if not expected_path.exists():
+                            return False
+            return True
+        except Exception:
+            return False
+    
+    if pathfile.exists() and not check_subservient_files_location():
+        print(f"{Fore.RED}{Style.BRIGHT}[SETUP ERROR]{Style.RESET_ALL} Subservient files location mismatch detected!\n")
+        print(f"{Fore.YELLOW}It appears that the Subservient folder has been moved or some files are missing.{Style.RESET_ALL}")
+        
+        try:
+            lines = pathfile.read_text(encoding="utf-8").splitlines()
+            essential_files = ["extraction_path", "acquisition_path", "synchronisation_path", "utils_path"]
+            missing_files = []
+            
+            for line in lines:
+                for file_key in essential_files:
+                    if line.startswith(f"{file_key}="):
+                        expected_path = Path(line.split("=", 1)[1].strip())
+                        if not expected_path.exists():
+                            missing_files.append(f"{file_key.replace('_path', '.py')}: {expected_path}")
+            
+            if missing_files:
+                print(f"{Fore.YELLOW}Missing files:{Style.RESET_ALL}")
+                for missing in missing_files:
+                    print(f"  - {Fore.WHITE}{missing}{Style.RESET_ALL}")
+        except Exception:
+            pass
+        print(f"\n{Fore.WHITE}{Style.BRIGHT}SOLUTION:{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}🔧 If you moved the entire Subservient folder:{Style.RESET_ALL}")
+        print(f"  1. Put subordinate.py back in the main Subservient folder (where all other .py files are)")
+        print(f"  2. Run subordinate.py once from that location to complete re-setup")
+        print(f"  3. After setup completes, you can move subordinate.py anywhere again for video processing")
+        print(f"\n{Fore.YELLOW}🔍 If individual files are missing or corrupted:{Style.RESET_ALL}")
+        print(f"  1. Remove the current Subservient folder. If need be, you can make a backup of your .config file.")
+        print(f"  2. Re-download Subservient from the official GitHub repository")
+        print(f"  3. Ensure all required .py files are present in the main folder")
+        print(f"\n{Fore.LIGHTBLUE_EX}📂 Current subordinate.py location: {Fore.WHITE}{Path(__file__).resolve().parent}{Style.RESET_ALL}")
+        
+        try:
+            pathfile.unlink()
+            print(f"\n{Fore.CYAN}✅ Old pathfile removed - fresh setup will run when you restart from main folder.{Style.RESET_ALL}")
+        except Exception:
+            pass
+        
+        input("\nPress Enter to exit...")
+        sys.exit(1)
     
     if valid_pathfile():
         return
@@ -511,6 +724,7 @@ def ensure_initial_setup():
 ensure_initial_setup()
 utils = import_utils()
 write_anchor_to_pathfile()
+write_subordinate_path_to_pathfile()
 def get_log_path():
     """Get path for requirements log file based on run counter.
     
@@ -524,8 +738,9 @@ def get_log_path():
     if pathfile.exists():
         with open(pathfile, "r", encoding="utf-8") as f:
             for line in f:
-                if line.startswith("subservient_anchor="):
-                    subservient_anchor = Path(line.split("=", 1)[1].strip())
+                if line.startswith("utils_path="):
+                    utils_path = Path(line.split("=", 1)[1].strip())
+                    subservient_anchor = utils_path.parent
                     break
     
     if not subservient_anchor:
@@ -559,9 +774,9 @@ def get_config_and_pause_seconds():
     if pathfile.exists():
         with open(pathfile, "r", encoding="utf-8") as f:
             for line in f:
-                if line.startswith("subordinate_path="):
-                    subordinate_path = Path(line.split("=", 1)[1].strip())
-                    anchor_path = subordinate_path.parent
+                if line.startswith("utils_path="):
+                    utils_path = Path(line.split("=", 1)[1].strip())
+                    anchor_path = utils_path.parent
                     break
     
     config_path = anchor_path / '.config'
@@ -601,8 +816,9 @@ def check_requirements_status():
     if pathfile.exists():
         with open(pathfile, "r", encoding="utf-8") as f:
             for line in f:
-                if line.startswith("subservient_anchor="):
-                    anchor_path = Path(line.split("=", 1)[1].strip())
+                if line.startswith("utils_path="):
+                    utils_path = Path(line.split("=", 1)[1].strip())
+                    anchor_path = utils_path.parent
                     break
     
     config_path = anchor_path / '.config'
@@ -960,7 +1176,7 @@ def main():
             if not ffmpeg_path or not mkvmerge_path:
                 print(f"\n{Fore.WHITE}For detailed installation instructions, please see the README file.{Style.RESET_ALL}")
                 print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
-                print(f"{Fore.WHITE}You can also use option '6' from the main menu to open the README directly.{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}You can also use option '7' from the main menu to open the README directly.{Style.RESET_ALL}")
             
             if os.name == 'nt':
                 import glob
@@ -1011,8 +1227,12 @@ def main():
             check_requirements_status()
             continue
         elif choice == "5":
-            reconstruct_config()
+            show_extra_tools_menu()
+            print_full_main_menu()
+            continue
         elif choice == "6":
+            reconstruct_config()
+        elif choice == "7":
             utils.clear_and_print_ascii(BANNER_LINE)
             subservient_folder = utils.get_subservient_folder()
             readme_path = subservient_folder / 'README.md'
@@ -1032,7 +1252,7 @@ def main():
             input("Press Enter to return to the main menu...")
             print_full_main_menu()
             continue
-        elif choice == "7":
+        elif choice == "8":
             print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting.")
             return
 
@@ -1090,6 +1310,7 @@ def run_subtitle_coverage_scan():
 ensure_initial_setup()
 utils = import_utils()
 write_anchor_to_pathfile()
+write_subordinate_path_to_pathfile()
 
 if __name__ == "__main__":
     main()

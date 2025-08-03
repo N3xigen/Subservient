@@ -1,6 +1,6 @@
 # 🎬 Subservient Subtitle Automation Suite
 
-![Version](https://img.shields.io/badge/version-v0.81-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-v0.83-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
@@ -24,25 +24,24 @@ Trello board where I keep track of reported bugs and features ---> https://trell
 
 ### 🎯 What Subservient Does For You
 
-**🔥 One-Click Processing**: Drop `subordinate.py` into any folder with videos and watch Subservient automatically:
-- **Extract** internal subtitles from video files that are ready to be used
-- **Download** missing subtitle languages from OpenSubtitles  
-- **AI-Sync** all subtitles using advanced audio analysis
-- **Clean up** your video files by removing unwanted subtitle tracks
+**🔥 Core Automation**: Drop `subordinate.py` into any folder and Subservient handles everything:
+- **Extract** internal subtitles from video files for immediate use
+- **Download** missing languages automatically via OpenSubtitles API  
+- **AI-Sync** all subtitles using advanced audio analysis (ffsubsync)
+- **Manual verification** with detailed offset editing for perfect results
 
-**⚡ Smart & Efficient**: 
-- Processes TV series automatically with episode detection (Scheduled for v0.9)
-- Handles both single movies and entire video collections
-- Works with 150+ languages using simple language codes (`en`, `nl`, `fr`, etc.)
-- Uses existing internal subs first (saves download quota)
-- Never overwrites originals - creates new synchronized `.srt` files
-  
-**✅ Simple & Straightforward**:
-- No confusing menus or overwhelming configuration options
-- Works out-of-the-box with sensible defaults
-- Just drop the script, run it, and let it do its job
-- Uses interactive and articulate prompts when Subservient has a question for you during runtime
-- Perfect for users who want results, not complexity
+**🧹 Subtitle Cleaner**: Integrated cleaning powered by subcleaner technology:
+- **Remove ads** and promotional text from subtitle files
+- **Filter** website credits, translator notes, and unwanted metadata
+- **Safe operation** with automatic backups and line-by-line restore functionality
+
+**⚙️ Smart Processing Modes**:
+- **Movie mode**: Single files or batch folders (largest file per folder)
+- **Series mode**: All episodes with S##E## detection (v0.9)
+- **Flexible control**: Keep/remove internal subtitles and forced subtitles as needed
+- **Comprehensive config**: Detailed `.config` file for complete customization
+
+**🎯 The Subservient Philosophy**: The first subtitle management suite that combines full automation with strategic manual input - delivering maximum subtitle quality through intelligent human-AI collaboration.
 
 **🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
 
@@ -144,7 +143,7 @@ During initial setup:
 </details>
 <br>
 
-> 📝 **NOTE:** If you ever decide to move the Subservient folder after installation, then move `subordinate.py` back into the Subservient folder and run it again in order to redo the initial setup. This will update Subservient_pathfiles. If you don't do this, then you will encounter (possibly unrelated) errors during runtime.
+> 📝 **NOTE:** If you ever decide to move the Subservient folder after installation, Subservient will automatically detect when essential files are missing or moved and will provide clear instructions. The old pathfile will be automatically cleaned up and you can simply follow the on-screen instructions to complete the re-setup. The `subordinate.py` file itself can be moved freely without issues.
 
 <br>
 <details>
@@ -179,9 +178,10 @@ Subservient stores the anchor and file locations in a user-specific config file:
 | **2** | Scan subtitle coverage | 📊 Analyze existing subtitle files in current directory |
 | **3** | Show quick instructions | 📋 View a concise guide to using Subservient |
 | **4** | Install & verify requirements | 🔧 Install and verify all Python packages |
-| **5** | Recreate .config file | ⚙️ Generate a new configuration file if needed |
-| **6** | Open README file | 📖 Open this documentation |
-| **7** | Exit | 🚪 Close the program |
+| **5** | Extra tools | 🛠️ Access Subtitle Cleaner and additional subtitle utilities |
+| **6** | Recreate .config file | ⚙️ Generate a new configuration file if needed |
+| **7** | Open README file | 📖 Open this documentation |
+| **8** | Exit | 🚪 Close the program |
 
 <br>
 <details>
@@ -196,6 +196,37 @@ It will scan your library and provide you with the following markers per video f
 - ❌ No coverage (no subtitles found)
 
 Use before processing to see what's available, or after to verify results.
+
+</details>
+
+<br>
+<details>
+<summary><strong>🛠️ About Extra Tools (Option 5)</strong></summary>
+
+Access additional subtitle utilities and cleaning tools that complement the main Subservient workflow:
+
+#### **🧹 Subtitle Cleaner**
+Remove advertisements, promotional content, and unwanted text from .srt files using the built-in Subtitle Cleaner:
+
+- **Smart Detection**: Automatically identifies and removes ads, website credits, translator notes, and promotional text
+- **Safe Operation**: All original files are automatically backed up before cleaning
+- **Restore Functionality**: Easily undo any changes if needed with the built-in restore option
+- **Batch Processing**: Clean multiple subtitle files at once for efficient processing
+- **Regex Profiles**: Uses advanced pattern matching to identify unwanted content
+
+**How to use:**
+1. Navigate to a folder containing video files and their .srt subtitle files
+2. Select "Extra tools" from the main menu (Option 5)
+3. Choose "Subtitle Cleaner" (Option 1)
+4. Select either "Clean subtitle files" or "Restore subtitle changes"
+
+#### **🔮 Future Tools**
+Additional subtitle manipulation tools will be added in future updates including:
+- Manual synchronization adjustments
+- Batch subtitle format conversion  
+- Subtitle merging and splitting utilities
+
+These tools work independently of the main Subservient process and can be used to enhance your subtitle files before or after synchronization.
 
 </details>
 <br>
@@ -764,8 +795,8 @@ Here are some common issues and solutions to help you get Subservient up and run
 - Run `subordinate.py` once after moving to re-anchor
 
 **🔧 If Issues Persist:**
-1. **Re-anchor Setup:** Move `subordinate.py` back to the main Subservient folder and run it once to trigger initial setup
-2. **Manual Reset:** If problems continue, manually delete the `Subservient_pathfiles` directory and rerun `subordinate.py` in the Subservient folder
+1. **Re-anchor Setup:** Simply run `subordinate.py` and it will automatically detect and resolve file location issues  
+2. **Manual Reset:** If problems continue, manually delete the `Subservient_pathfiles` directory (typically in your user config folder) and rerun `subordinate.py` in the Subservient folder
 3. **Fresh Start:** Backup the .config and re-download Subservient from GitHub and replace your .config file. Then meticulously follow the installation setup at the top of this README.
 
 </details>
@@ -927,13 +958,13 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🧹 **2025-08-03** | v0.83 | 🆕 Subtitle Cleaner | Full subtitle cleaning tool with ad removal, backup/restore, and batch processing! |
 | 💬 **2025-08-01** | v0.81 | 🎯 7 bugs fixed! | More in-depth (forced)subtitle preservation, language code mismatch fix and more! |
 | 🔥 **2025-07-28** | v0.80 | 🎉 ALPHA release | Video synchronisation is fully operational, repo is public! |
 | 🐛 **2025-07-20** | v0.79 | 🔥 Single/batch video syncs now work! | Launch day coming soon |
 | 🔧 **2025-07-05** | v0.78 | 🎛️ Manual Verification | Added manual offset verification menu and editor |
-| 🧪 **2025-06-25** | v0.75 | 🔍 Testing Phase | Extensive testing with 200+ personal video collection |
 
-> 🎉 **Current Version: v0.81** - Seven bugs fixed, Subservient should be significantly more robust now. See commit for more details.
+> 🎉 **Current Version: v0.83** - Major new feature: Subtitle Cleaner tool for removing ads, watermarks, and unwanted content from subtitle files!
 
 <br>
 
@@ -1060,7 +1091,8 @@ The inclusion of various technical format filters and metadata cleaning capabili
 ## 🙏 Acknowledgments
 
 - Thanks to all the contributors and open-source projects that made this software possible
-- Special thanks to the OpenSubtitles team for providing an excellent API and subtitle database.
+- Special thanks to the OpenSubtitles team for providing an excellent API and subtitle database
+- Special thanks to [KBlixt/subcleaner](https://github.com/KBlixt/subcleaner) for the powerful subtitle cleaning engine integrated into Subservient
 - Very special thanks to all of my current and future supporters! You are simply the best and the biggest reason why I will release most of my projects free and largely open-source.
 
 <br><br><br><br>
@@ -1068,7 +1100,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.81-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.83-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
