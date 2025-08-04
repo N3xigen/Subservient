@@ -5,7 +5,6 @@
 ![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-![FFmpeg](https://img.shields.io/badge/requires-FFmpeg-red.svg)
 ![Dependencies](https://img.shields.io/badge/dependencies-8%20packages-green.svg)
 
 Trello board where I keep track of reported bugs and features ---> https://trello.com/b/unbhHN3v/subservient 
@@ -1353,3 +1352,4 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
