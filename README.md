@@ -1199,13 +1199,14 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🐳 **2025-08-04** | v0.85 | 🆕 Docker Support | Full Docker containerization with docker-compose support and Unraid compatibility! |
 | 🧹 **2025-08-03** | v0.83 | 🆕 Subtitle Cleaner | Full subtitle cleaning tool with ad removal, backup/restore, and batch processing! |
 | 💬 **2025-08-01** | v0.81 | 🎯 7 bugs fixed! | More in-depth (forced)subtitle preservation, language code mismatch fix and more! |
 | 🔥 **2025-07-28** | v0.80 | 🎉 ALPHA release | Video synchronisation is fully operational, repo is public! |
 | 🐛 **2025-07-20** | v0.79 | 🔥 Single/batch video syncs now work! | Launch day coming soon |
 | 🔧 **2025-07-05** | v0.78 | 🎛️ Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.83** - Major new feature: Subtitle Cleaner tool for removing ads, watermarks, and unwanted content from subtitle files!
+> 🎉 **Current Version: v0.85** - New feature: Full Docker containerization support with docker-compose and Unraid compatibility!
 
 <br>
 
