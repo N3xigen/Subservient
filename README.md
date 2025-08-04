@@ -1339,6 +1339,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <br><br><br><br>
 ---
 <div align="center">
+
 **🎬 Made with ❤️ for the subtitle automation community**
 
 [![Version](https://img.shields.io/badge/version-v0.85-brightgreen.svg)](https://github.com/N3xigen/Subservient)
@@ -1352,6 +1353,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
 
