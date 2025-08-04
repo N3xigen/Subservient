@@ -1,7 +1,8 @@
 # 🎬 Subservient Subtitle Automation Suite
 
-![Version](https://img.shields.io/badge/version-v0.83-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-v0.85-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 ![FFmpeg](https://img.shields.io/badge/requires-FFmpeg-red.svg)
@@ -24,24 +25,20 @@ Trello board where I keep track of reported bugs and features ---> https://trell
 
 ### 🎯 What Subservient Does For You
 
-**🔥 Core Automation**: Drop `subordinate.py` into any folder and Subservient handles everything:
+**🔥 Core Automation**: Drop `subordinate.py` into any folder and Subservient handles everything
 - **Extract** internal subtitles from video files for immediate use
 - **Download** missing languages automatically via OpenSubtitles API  
 - **AI-Sync** all subtitles using advanced audio analysis (ffsubsync)
 - **Manual verification** with detailed offset editing for perfect results
 
-**🧹 Subtitle Cleaner**: Integrated cleaning powered by subcleaner technology:
-- **Remove ads** and promotional text from subtitle files
-- **Filter** website credits, translator notes, and unwanted metadata
-- **Safe operation** with automatic backups and line-by-line restore functionality
-
-**⚙️ Smart Processing Modes**:
+**⚙️ Smart Processing**:
 - **Movie mode**: Single files or batch folders (largest file per folder)
 - **Series mode**: All episodes with S##E## detection (v0.9)
 - **Flexible control**: Keep/remove internal subtitles and forced subtitles as needed
 - **Comprehensive config**: Detailed `.config` file for complete customization
+- **Automated Subtitle Cleaning**: Remove promotional text, translator notes and unwanted metadata from subtitle files
 
-**🎯 The Subservient Philosophy**: The first subtitle management suite that combines full automation with strategic manual input - delivering maximum subtitle quality through intelligent human-AI collaboration.
+<br>
 
 **🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
 
@@ -49,9 +46,10 @@ Trello board where I keep track of reported bugs and features ---> https://trell
 
 ## 📽️ Subservient Installation & Configuration (video) Guide
 
-The video below provides a comprehensive walkthrough for installing and configuring Subservient on a fresh Windows machine.  
-It covers Python setup, required dependencies, and the use of external tools like ffmpeg and mkvtoolnix.
-Click the link if you would like to follow the video guide, or scroll down to consult the ReadMe file.
+The video below provides a comprehensive walkthrough for installing and configuring Subservient.<br>
+It covers Python setup, required dependencies, and the use of external tools like ffmpeg and mkvtoolnix.<br>
+Please note that this installation video only covers the native Python version, and not the docker container.<br>
+For a (textual) guide installing and running the containerized version of Subservient, please scroll down.<br>
 
   <a href="https://www.youtube.com/watch?v=33lcr6dCtRw">
     <img src="https://i.ibb.co/6JBG73qP/Screenshot-2025-07-28-112319.png" alt="Screenshot-2025-07-28-112319" alt="Subservient Instructional Video" width="480"/>
@@ -74,7 +72,16 @@ Click the link if you would like to follow the video guide, or scroll down to co
 
 ## 🔧 INSTALLING AND CONFIGURING SUBSERVIENT
 
-After downloading the Subservient folder from the GitHub repository, ensure that **all required files** are present in the same folder. 
+Choose your installation method based on your preferences and technical setup:
+
+<details>
+<summary><strong>🐍 Install Subservient with Python (Native Installation)</strong></summary>
+
+<br>
+
+> **Best for:** Users who want direct Python access, development, or full customization control
+
+After downloading the Subservient folder from the GitHub repository, ensure that **all required files** are present in the same folder.
 
 ### 📁 Required Files
 
@@ -92,7 +99,8 @@ After downloading the Subservient folder from the GitHub repository, ensure that
 
 <br>
 
-### 🐍 Step 1: Install Python
+<details>
+<summary><strong>🐍 Step 1: Install Python</strong></summary>
 
 Subservient requires **Python 3.8+**. If you don't have Python:
 
@@ -110,9 +118,10 @@ Subservient requires **Python 3.8+**. If you don't have Python:
 > - **If installed to C-drive:** `C:\Python[version]\` and `C:\Python[version]\Scripts\`
 > - **If default location:** `C:\Users\[YourUsername]\AppData\Local\Programs\Python\Python[version]\` and `C:\Users\[YourUsername]\AppData\Local\Programs\Python\Python[version]\Scripts\`
 
-<br>
+</details>
 
-### 🏗️ Step 2: Initial Setup
+<details>
+<summary><strong>🏗️ Step 2: Initial Setup</strong></summary>
 
 > **Position the `Subservient` folder where you want to keep it permanently, then:**
 
@@ -126,11 +135,11 @@ During initial setup:
 | ⚓ | Create anchor point and pathfiles | Saves to system config |
 | ✅ | Verify installation | Shows confirmation |
 
-> ⚠️ **Windows Users:** Microsoft Visual C++ Build Tools are **required** for Python package installation. If you don't have them installed, Subservient will notice this, direct you to install them first and then exit. See [Step 4](#-step-4-install--verify-requirements) for installation instructions.
+> ⚠️ **Windows Users:** Microsoft Visual C++ Build Tools are **required** for Python package installation. If you don't have them installed, Subservient will notice this, direct you to install them first and then exit. See [Step 4](#step-4-install--verify-requirements) for installation instructions.
 
 <br>
 <details>
-<summary><strong>🔧 Technical Setup Details</strong> (✚ click to expand)</summary>
+<summary><strong>🔧 Technical Setup Details</strong> ( click to expand)</summary>
 
 - If you miss essential Python packages, it will attempt to install them using 'pip install'.
   Once you have the packages installed, it will either continue or quit depending on your system. 
@@ -147,7 +156,7 @@ During initial setup:
 
 <br>
 <details>
-<summary><strong>📍 Where are the locations stored?</strong> (✚ click to expand)</summary>
+<summary><strong>📍 Where are the locations stored?</strong> ( click to expand)</summary>
 
 Subservient stores the anchor and file locations in a user-specific config file:
 
@@ -165,10 +174,11 @@ Subservient stores the anchor and file locations in a user-specific config file:
 
 ✅ **After completing the initial setup, you are now able to access the `subordinate.py` main menu.**
 
-<br>
+</details>
 
-### 🎮 Step 3: Access the Main Menu
----
+<details>
+<summary><strong>🎮 Step 3: Access the Main Menu</strong></summary>
+
 - Press Enter (if you haven't already) to proceed from the initial setup to the main menu.
 - The menu options are:
 
@@ -229,9 +239,11 @@ Additional subtitle manipulation tools will be added in future updates including
 These tools work independently of the main Subservient process and can be used to enhance your subtitle files before or after synchronization.
 
 </details>
-<br>
 
-### 📦 Step 4: Install & Verify Requirements
+</details>
+
+<details>
+<summary><strong>📦 Step 4: Install & Verify Requirements</strong></summary>
 
 Select menu option (4) to install Python packages:
 
@@ -274,7 +286,7 @@ Subservient requires three external tools to function properly:
 - **Download:** [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (click on 'Download Build Tools')
 - During installation, you will only need to select `C++ Build Tools` and then start installing
 
-If you encountered package installation failures during [Step 2](#-step-2-initial-setup), retry the setup after installing Build Tools.
+If you encountered package installation failures during [Step 2](#step-2-initial-setup), retry the setup after installing Build Tools.
 If it still gives errors, then add `cl.exe` to PATH (see below)
 
 - **CL issue:** If `cl` command fails:
@@ -292,7 +304,162 @@ You can always try running Subservient anyway to see if it works, but it's about
 **💝 Support Note:**
 Limited support is available via GitHub issues. For faster, more personalized Discord support, consider [supporting via Buy Me a Coffee](https://buymeacoffee.com/nexigen).
 
-### ⚙️ Step 5: Configuration
+</details>
+
+<br>
+
+</details>
+
+
+<details>
+<summary><strong>🐳 Install Subservient with Docker (Containerized)</strong></summary>
+
+<br> 
+
+> **Best for:**<br>Users who want easy deployment, Unraid compatibility, or isolated environments.<br>
+Docker provides a completely self-contained Subservient environment with all dependencies pre-installed.<br>Perfect for NAS systems like Unraid, or users who prefer containerized applications.
+
+### 📋 Prerequisites
+
+1. **Docker Desktop** (Windows/macOS) or **Docker Engine** (Linux)
+   - Download from [docker.com](https://www.docker.com/products/docker-desktop/)
+   - Ensure Docker is running before proceeding
+
+2. **Git** (optional - for cloning repository)
+   - Or download ZIP from GitHub and extract
+
+### 🚀 Quick Start
+
+1. **Get Subservient:**
+   ```bash
+   git clone https://github.com/N3xigen/Subservient.git
+   cd Subservient/docker
+   ```
+
+2. **Prepare your content:**
+<br>
+Place your video files in the `movies` folder and configure OpenSubtitles credentials in the main `.config` file.
+   ```
+   docker/
+   ├── movies/          # ← Place your video files here
+   ├── logs/            # ← Subservient logs (auto-generated)
+   └── data/            # ← Subtitle backups (auto-generated)
+   ```
+
+3. **Start Subservient:**
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Access Subservient:**
+   ```bash
+   docker exec -it subservient bash
+   python subordinate.py
+   ```
+
+### � Folder Structure
+All your data is automatically preserved between container restarts:
+
+| Host Path | Container Path | Purpose |
+|-----------|----------------|---------|
+| `docker/movies/` | `/app/movies` | Your video files |
+| `Subservient/.config` | `/app/.config` | Configuration file (shared with native version) |
+| `docker/logs/` | `/app/logs` | Subservient processing logs |
+| `docker/data/` | `/app/data` | Subtitle backups & data |
+
+### 🎮 Usage Examples
+
+#### **Interactive Mode (Recommended)**
+```bash
+# Start container
+docker-compose up -d
+
+# Enter interactive session
+docker exec -it subservient bash
+
+# Run Subservient (inside container)
+python subordinate.py
+```
+
+#### **One-time Processing**
+```bash
+# Start container and run directly
+docker-compose up -d
+docker exec subservient python subordinate.py
+```
+
+#### **Unraid Template**
+For Unraid users, use these container settings:
+- **Repository:** `ghcr.io/n3xigen/subservient:latest` (when available)
+- **Network Type:** `bridge`
+- **Console Shell Command:** `bash`
+- **Host Paths:**
+  - `/mnt/user/Movies/` → `/app/movies`
+  - `/mnt/user/appdata/subservient/logs/` → `/app/logs`
+  - `/mnt/user/appdata/subservient/data/` → `/app/data`
+  - `/mnt/user/appdata/subservient/.config` → `/app/.config`
+
+### ⚙️ Docker Commands
+
+| Action | Command |
+|--------|---------|
+| **Start container** | `docker-compose up -d` |
+| **Stop container** | `docker-compose down` |
+| **View logs** | `docker-compose logs -f` |
+| **Rebuild** | `docker-compose up --build -d` |
+| **Enter container** | `docker exec -it subservient bash` |
+
+### 🔒 Data Persistence
+
+All important data is automatically preserved:
+- **Configuration settings** persist via shared `.config` file
+- **Subtitle backups** persist in `data/subtitle_backups/`
+- **Processing logs** persist in `logs/` volume
+- **Pathfile configuration** automatically maintained in container
+
+### 🚀 Performance Optimization
+
+Docker containers have resource limits that can slow down intensive operations like subtitle synchronization. For better performance:
+
+#### **Docker Desktop Users:**
+1. Open **Docker Desktop** → **Settings** → **Resources**
+2. **Recommended settings:**
+   - **CPUs**: 4-6 cores (or 75% of your available cores)
+   - **Memory**: 6-8GB (or 50% of your total RAM)
+   - **Swap**: 2GB
+
+#### **Docker Compose Users:**
+Add resource limits to your `docker-compose.yml`:
+```yaml
+services:
+  subservient:
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'    # Adjust based on your system
+          memory: 6G     # Adjust based on your RAM
+```
+
+#### **Performance Tips:**
+- **ffsubsync** (audio sync) is CPU-intensive - more cores = faster sync
+- **Large video files** benefit from more RAM allocation
+- **SSD storage** improves file I/O performance significantly
+- **Close other applications** during processing for maximum resources
+
+> 💡 **Note:** Subtitle synchronization can be 2-3x slower in Docker compared to native Python due to virtualization overhead.
+
+<br> 
+
+</details>
+
+<details>
+
+<br>
+
+<summary><strong>⚙️ Configuration (.config file) </strong></summary>
+
+> 🔧 **Unified Configuration**  
+> Both the **native Python** and **Docker** versions use the same `.config` file located in the main Subservient folder.<br>Therefore, any changes you make to the configuration will apply to both versions seamlessly.
 
 Edit the `.config` file to set your OpenSubtitles credentials and preferences.
 
@@ -309,43 +476,40 @@ Edit the `.config` file to set your OpenSubtitles credentials and preferences.
 
 > 💡 **VIP Recommendation**
 > 
-> **VIP membership** is a paid upgrade that increases your daily download limit to 1000. This is highly recommended if you plan to use Subservient substantially. You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
+> **VIP membership** is a paid upgrade that increases your daily download limit to 1000.<br>This is recommended if you plan to use Subservient substantially.<br>You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
 
-#### 🔧 Essential Configuration Settings
+#### 🔧 All Configuration Options
 
-Open `.config` and configure the required settings:
+Open `.config` and configure these settings:
 
-| Setting | Description | Example | Required |
+| Setting | Description | Default | Required |
 |---------|-------------|---------|----------|
-| **username** | OpenSubtitles username | `myuser` | ✅ |
-| **password** | OpenSubtitles password | `mypass` | ✅ |
-| **api_key** | OpenSubtitles API key | `abc123` | ✅ |
-| **languages** | Languages to download | `en,nl,fr` | ✅ |
-| **series_mode** | TV series vs movies | `false` | - |
-| **preserve_forced_subtitles** | Keep FORCED subtitle tracks | `false` | - |
-| **preserve_unwanted_subtitles** | Keep all subtitle languages | `false` | - |
-
-<details>
-<summary>🔧 <strong>All Configuration Options</strong></summary>
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **max_search_results** | Max search results per video | `12` |
-| **top_downloads** | Subtitles to test per batch | `3` |
-| **accept_offset_threshold** | Auto-accept sync threshold | `configurable` |
-| **reject_offset_threshold** | Auto-reject sync threshold | `configurable` |
-| **preserve_forced_subtitles** | Keep FORCED subtitle tracks | `false` |
-| **preserve_unwanted_subtitles** | Keep all subtitle languages | `false` |
-| **audio_track_languages** | Audio tracks to keep | `en,nl,ja` |
-| **skip_dirs** | Folders to ignore | `extras,trailers` |
-| **unwanted_terms** | Filter from search | `720p,BluRay` |
-| **delete_extra_videos** | Delete extra videos | `false` |
-| **pause_seconds** | Pause between phases | `3` |
+| **api_key** | OpenSubtitles consumer API key from API Consumers section | `(empty)` | ✅ |
+| **username** | Your OpenSubtitles account username | `(empty)` | ✅ |
+| **password** | Your OpenSubtitles account password | `(empty)` | ✅ |
+| **api_url** | OpenSubtitles API endpoint (only change if API URL changes) | `https://api.opensubtitles.com/api/v1` | - |
+| **languages** | Comma-separated languages to download and sync (e.g. `en,nl,fr`) | `en` | - |
+| **audio_track_languages** | Audio track languages to keep in video files (`ALL` = keep all) | `en,ja` | - |
+| **accept_offset_threshold** | Auto-accept sync threshold in seconds (lower = stricter quality) | `0.05` | - |
+| **reject_offset_threshold** | Auto-reject sync threshold in seconds (higher = more lenient) | `2.5` | - |
+| **series_mode** | Process all videos in folder (`true`) vs only largest file (`false`) | `false` | - |
+| **delete_extra_videos** | Permanently delete extra videos (`true`) or move to folder (`false`) | `false` | - |
+| **extras_folder_name** | Folder name for moved extra videos when `delete_extra_videos=false` | `extras` | - |
+| **preserve_forced_subtitles** | Keep FORCED subtitle tracks (for foreign dialogue scenes) | `false` | - |
+| **preserve_unwanted_subtitles** | Keep all subtitle languages, not just wanted ones | `false` | - |
+| **pause_seconds** | Seconds to pause between processing phases | `5` | - |
+| **max_search_results** | Maximum subtitle search results per video (Free: ≤12, VIP: 20+) | `10` | - |
+| **top_downloads** | Subtitles to test per batch (Free: 2-4, VIP: 5-10) | `3` | - |
+| **download_retry_503** | Retry attempts for server overload errors (recommended: 6) | `6` | - |
+| **skip_dirs** | Comma-separated folder names to ignore during scanning | `extras,trailers,samples...` | - |
+| **unwanted_terms** | Terms to filter from subtitle search queries (technical metadata) | `720p,BluRay,x264...` | - |
 
 > ⚠️ **Warning:** `delete_extra_videos=true` **PERMANENTLY DELETES** all video files except the largest in each folder.
 
+<br>
+
 <details>
-<summary>🎯 <strong>Subtitle Preservation Logic</strong> - Advanced track management settings ✚</summary>
+<summary>🎯 <strong>Subtitle Preservation Logic</strong> - Advanced track management settings</summary>
 
 **🎮 Smart Preservation System**: Control exactly what subtitle content gets preserved during processing:
 
@@ -369,33 +533,8 @@ Open `.config` and configure the required settings:
 
 </details>
 
-<br>
 <details>
-<summary>🔧 <strong>Advanced Setting Details</strong> - Click here for detailed explanation of every .config setting ✚</summary>
-
-**🎯 Sync Quality:**
-- **accept_offset_threshold**: Subtitles with sync offsets below this threshold are automatically accepted as excellent sync quality, skipping manual verification
-- **reject_offset_threshold**: Subtitles with sync offsets above this threshold are automatically rejected and new subtitles are downloaded
-
-**🔍 Search & Performance:**
-- **max_search_results**: More options but slower (Free: 6, VIP: 12+)
-- **top_downloads**: Lower preserves download quota (Free: 1-2, VIP: 3-5)
-- **download_retry_503**: Retry attempts for server overload (recommended: 6)
-
-**🎯 Subtitle Management:**
-- **preserve_forced_subtitles**: Keep FORCED subtitle tracks (for foreign dialogue)
-- **preserve_unwanted_subtitles**: Keep subtitles in non-wanted languages
-- **languages**: Controls which subtitles are downloaded and synchronized
-
-**📁 Content Management:**
-- **skip_dirs**: Folders to ignore (`extras,trailers,samples`)
-- **unwanted_terms**: Remove from search (`720p,BluRay,x264`)
-
-</details>
-
-</details>
-
-#### 🎬 Mode Settings:
+<summary><strong>🎬 Mode Settings</strong> - Movie mode vs Series mode</summary>
 
 | Mode | Behavior | Use For |
 |------|----------|---------|
@@ -404,22 +543,35 @@ Open `.config` and configure the required settings:
 | **delete_extra_videos = false** | Move extras to folder | ✅ Safe |
 | **delete_extra_videos = true** | **PERMANENTLY DELETE** | ⚠️ Risky |
 
-## 🌍 Language Codes
+</details>
+
+<details>
+<summary><strong> 🌐 Language Codes </strong> - All supported languages and how to use them </summary>
 
 Use ISO 639-1 codes in `.config` (e.g., `en`, `nl`, `fr`):
 
 | Language | Code | Language | Code | Language | Code |
 |----------|------|----------|------|----------|------|
-| 🇺🇸 English | en | 🇳🇱 Dutch | nl | 🇫🇷 French | fr |
-| 🇩🇪 German | de | 🇪🇸 Spanish | es | 🇮🇹 Italian | it |
-| 🇵🇹 Portuguese | pt | 🇷🇺 Russian | ru | 🇯🇵 Japanese | ja |
-| 🇨🇳 Chinese | zh | 🇰🇷 Korean | ko | 🇸🇦 Arabic | ar |
+| 🇺🇸 English | `en` | 🇳🇱 Dutch | `nl` | 🇫🇷 French | `fr` |
+| 🇩🇪 German | `de` | 🇪🇸 Spanish | `es` | 🇮🇹 Italian | `it` |
+| 🇵🇹 Portuguese | `pt` | 🇷🇺 Russian | `ru` | 🇯🇵 Japanese | `ja` |
+| 🇨🇳 Chinese | `zh` | 🇰🇷 Korean | `ko` | 🇸🇦 Arabic | `ar` |
 
-> 🔍 **Need more?** See [ISO 639-1 Wikipedia](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) for complete list.
+> 🌍 **Need more?** See [ISO 639-1 Wikipedia](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) for complete list.
+
+</details>
+
+</details>
 
 <br>
 
 ## 🎯 USING SUBSERVIENT
+
+Choose your preferred method for using Subservient:
+
+
+<details>
+<summary><strong>🐍 Using Subservient with the native python installation</strong></summary>
 
 ### 🎮 How to use subordinate.py
 
@@ -445,13 +597,90 @@ For instance, batch processing for movies is achieved when `subordinate.py` is p
 2. Subservient processes automatically based on `.config` settings
 3. Manual input only needed for edge cases (bad configs, series detection, etc.)
 
-### 💬 When You'll Be Prompted
+</details>
+
+<details>
+<summary><strong>🐳 Using Subservient with a docker container</strong></summary>
+
+### 🎮 Using Docker Container
+
+#### Using Docker Compose (Recommended)
+
+Navigate to the `docker` folder and start the container:
+
+```bash
+cd docker
+docker-compose up
+```
+
+The container will start with an interactive terminal showing the Subservient main menu.
+
+#### Using Docker Run Command
+
+```bash
+docker run -it --rm \
+  -v /path/to/your/movies:/movies \
+  -v /path/to/config:/config \
+  -v /path/to/persistent/logs:/app/logs \
+  -v /path/to/persistent/data:/app/data \
+  -v /path/to/persistent/home:/root \
+  subservient:latest
+```
+
+### 🎯 Container Usage
+
+1. **Interactive Mode**: Container starts directly in Subservient's main menu
+2. **Volume Access**: All your movie files are accessible via `/movies` mount
+3. **Persistent Data**: Configuration, logs, and download backups persist between container runs
+4. **File Operations**: Process movies directly from mounted volumes
+
+#### File Placement Strategy
+
+Since you can't move the script file in a container environment:
+
+| Scenario | Docker Approach |
+|----------|-----------------|
+| **Single Movie** | Place movie in dedicated folder under `/movies` |
+| **Batch Movies** | Organize movies in separate folders under `/movies` |
+| **TV Series** | Use series folder structure under `/movies` + `series_mode=true` |
+
+### 📁 Volume Organization
+
+Structure your mounted directories for optimal workflow:
+
+```
+/your/movies/
+├── Movie1_Folder/
+│   └── movie1.mkv
+├── Movie2_Folder/
+│   └── movie2.mp4
+└── TV_Series/
+    ├── Season 1/
+    └── Season 2/
+
+/your/config/
+└── .config
+
+/your/logs/
+└── (Subservient logs)
+
+/your/data/
+└── (Subtitle backups)
+```
+
+</details>
+
+<br>
+
+### 💬 When is a 'human touch' required?
 
 Four main situations require your input:
 <br>
 
 <details>
 <summary>1. 🔤 <strong>No Valid 'languages' Entry in .config </strong> (`extraction.py`)</summary>
+
+<br>
 
 **Trigger:** If the extraction script does not find a valid 'languages' entry in your `.config` file
 
@@ -483,6 +712,9 @@ Four main situations require your input:
 <details>
 <summary>3. 🧹 <strong>Prompt for Cleaning Internal Subtitles </strong>(`synchronisation.py`)</summary>
 
+<br>
+
+
 **Trigger:** If not all required external subtitles in your preferred languages are present for a video
 
 **Prompt:** "Not all external subtitles present for [video]. Do you want to clean internal subtitles anyway?"
@@ -497,6 +729,9 @@ Four main situations require your input:
 
 <details>
 <summary>4. 🎯 <strong>Manual Offset Verification and Correction </strong>(`synchronisation.py`)</summary>
+
+<br>
+
 
 **Trigger:** If any subtitles had timing offset corrections applied during synchronisation
 
@@ -532,105 +767,111 @@ Subservient runs through four automated phases:
 
 Each phase calls the next automatically. User input only for edge cases.
 
-### 🎮 Phase 1: Setup (`subordinate.py`)
-Initialize environment, verify dependencies, present main menu.
-
-### 📤 PHASE 2: EXTRACTION (`extraction.py`)  
-Extract internal subtitles, auto-detect languages, clean unwanted tracks.
-
-**Why extract first?** Internal subtitles are already perfectly synchronized and don't count against your OpenSubtitles download quota. Using what's already available is faster than searching online.
-
 <details>
-<summary><strong>📤 Enhanced Extraction Features</strong></summary>
+<summary><strong>🎮 PHASE 1: SETUP & ANCHORING (`subordinate.py`)</strong></summary>
 
-| Feature | Description |
-|---------|-------------|
-| 🎯 **Smart FORCED Detection** | Automatically identifies and preserves FORCED subtitle tracks |
-| 🌐 **Language Auto-Detection** | Uses AI to detect subtitle languages with 95%+ accuracy |
-| 🧹 **Intelligent Cleanup** | Removes unwanted audio/subtitle tracks based on your preferences |
-| 🔄 **Preservation Logic** | Advanced control over what gets kept vs removed |
-| 📊 **Comprehensive Logging** | Detailed tracking of all extraction decisions |
+<br>
 
-**Advanced preservation options:**
-- **FORCED subtitle protection**: Never accidentally remove essential foreign dialogue subtitles
-- **Audio track filtering**: Keep only wanted language audio tracks (saves space)
-- **Flexible language handling**: Preserve everything or be selective based on your needs
+**Role of subordinate.py:**
+`subordinate.py` serves as the **central reference point** for all other scripts in the native Python version. <br>
+You place `subordinate.py` directly in the folder containing your video files, <br>
+and all other scripts use its location to discover and process videos in that directory and subdirectories. <br>
+
+**Key Functions:**
+- **🎯 Process Launcher**: Initiates the complete 4-phase automation (Option 1) with pre-flight checklist verification
+- **🏠 Central Hub**: Provides main menu access to all tools, configuration, and documentation
+- **📍 Anchor Point**: Other scripts locate videos relative to subordinate.py's position
+- **🔧 Tool Collection**: Subtitle coverage scans, subtitle cleaning (ads/credits removal), configuration management
+
+**Technical Operations:**
+- **Package Management**: Installs core dependencies (colorama, langdetect, requests, tqdm, platformdirs) if missing
+- **Pathfile Creation**: Writes anchor directory path to persistent pathfile for cross-session access
+- **Configuration Management**: Creates and validates configuration files with video/audio processing settings
+- **Initial Setup**: Ensures directory structure and required files exist before processing begins
+- **Menu Interface**: Provides interactive navigation between all four phases
+
+**Files Modified**: `pathfile.txt`, `config` files, dependency installations  
+**Manual Input**: [Manual Input 1] - Configuration validation and directory selection
 
 </details>
 
-> ✅ **Phase 2 Summary**
-> 
-> Uses existing internal subtitles before searching online, saves download quota, ensures perfect sync, intelligently manages FORCED subtitles, and cleans video files by removing unwanted tracks.
-
-### 🌐 PHASE 3: SUBTITLE ACQUISITION (`acquisition.py`)
-
-**Goal:** Download best subtitles for missing languages using OpenSubtitles API.
-
 <details>
-<summary><strong>🌐 Process Details</strong></summary>
+<summary><strong>📤 PHASE 2: EXTRACTION (`extraction.py`)</strong></summary>
 
-| Step | Action |
-|------|--------|
-| 🔍 **Analysis** | Scan for missing subtitle languages |
-| 🌐 **Search** | Query OpenSubtitles API with smart strategies |
-| 📥 **Download** | Get best candidates based on ratings and downloads |
-| 🤔 **Fallback** | Interactive handling when subtitles can't be found |
+<br>
 
-**Search strategies:** 
-- **Primary**: Uses video/folder name, strips to core title and year
-- **Fallback**: Tries variations without year or with different formatting
-- **Manual**: Allows custom search terms for difficult titles
-- **Language-specific**: Tailored queries per target language
-- **Enhanced retry logic**: Automatic retries for server overload (503 errors)
+**Role of extraction.py:**
+The **subtitle discovery engine** that intelligently harvests internal subtitles already embedded within your video files. <br> Since internal subtitles are perfectly synchronized and don't count against OpenSubtitles download quotas, <br> extraction prioritizes using existing content before searching online.
 
-**Options for missing subtitles:**
-1. Manual search with custom terms
-2. Delete problematic videos
-3. Increase download limits  
-4. Skip temporarily or permanently
+**Key Functions:**
+- **🔍 Container Scanning**: Systematically analyzes video files for embedded subtitle streams
+- **🌍 Smart Language Detection**: Uses AI to identify subtitle languages with high accuracy
+- **🎯 FORCED Subtitle Preservation**: Protects essential foreign dialogue subtitles from removal
+- **🧹 Intelligent Track Management**: Handles multiple subtitle/audio tracks based on user preferences
 
-**Improved reliability:**
-- **JWT token management**: Automatic login and session handling
-- **503 error handling**: Smart retries when OpenSubtitles servers are busy
-- **Rate limit protection**: Respects API limits to prevent account suspension
+**Technical Operations:**
+- **Container Analysis**: Uses `ffprobe` to scan video files for embedded subtitle streams
+- **Language Detection**: Analyzes subtitle content using langdetect library for automatic language identification
+- **Subtitle Extraction**: Executes `mkvmerge` operations to extract internal subtitles to `.srt` files
+- **Track Management**: Preserves forced subtitle flags and handles multiple language tracks per video
+- **Format Conversion**: Converts various subtitle formats (VobSub, ASS, etc.) to standardized SRT format
+
+**Files Created**: `{video_basename}.{lang}.srt` files extracted from video containers  
+**Manual Input**: [Manual Input 2] - Language confirmation and forced subtitle handling
 
 </details>
 
-> ✅ **Phase 3 Summary**  
-> Intelligently searches and downloads subtitles using multiple strategies, with interactive fallbacks when automated searches fail.
-
-### 🎯 PHASE 4: SUBTITLE SYNCHRONISATION (`synchronisation.py`)
-
-**Goal:** AI sync, quality control, language detection, optional cleanup.
-
 <details>
-<summary><strong>🎯 Process Details</strong></summary>
+<summary><strong>🌐 PHASE 3: ACQUISITION (`acquisition.py`)</strong></summary>
 
-| Step | Action |
-|------|--------|
-| 🤖 **AI Sync** | ffsubsync analyzes audio and aligns timing |
-| 📊 **Quality Analysis** | Auto-classify sync quality using offset thresholds |
-| 🏷️ **Language Detection** | Auto-detect and rename by actual language |
-| 🧹 **Internal Cleanup** | Optional removal of internal subtitle tracks |
+<br>
 
-**Three-tier quality system:**
-- 🟢 **Auto-Accept** (≤0.05s offset): Excellent sync, processed immediately
-- 🟡 **Manual Review** (0.05s-1.2s): Requires user verification at end of run
-- 🔴 **Auto-Reject** (>1.2s offset): Poor sync, marked as DRIFT for retry
+**Role of acquisition.py:**
+The **subtitle hunting specialist** that searches the OpenSubtitles database when internal subtitles are missing or incomplete. <br> Uses sophisticated search strategies and automatic retry logic to find the best available subtitles for your videos.
 
-**Status system handles problems:**
-- **DRIFT**: Timing gradually worsens throughout video - triggers automatic retry with new subtitles
-- **FAILED**: No suitable subtitles found after all attempts - logged for manual review
+**Key Functions:**
+- **🔍 Multi-Strategy Search**: Employs hash-based, filename-based, and manual query approaches
+- **🌐 OpenSubtitles Integration**: Handles JWT authentication and API communication seamlessly
+- **📥 Smart Download Logic**: Selects top-rated subtitles with automatic 503 error retry handling
+- **🤔 Interactive Fallbacks**: Provides manual search options when automatic matching fails
 
-**Manual verification options:**
-- Open video automatically or show path for manual checking
-- Fine-tune timing with millisecond precision
-- Mark as DRIFT to trigger new download attempts
+**Technical Operations:**
+- **API Integration**: Authenticates with OpenSubtitles API using JWT tokens for subtitle database access
+- **Search Strategy**: Implements multiple search algorithms (hash-based, filename-based, manual query)
+- **Download Logic**: Downloads top-rated subtitles with automatic retry for 503 server responses
+- **File Management**: Saves subtitles with numbered naming convention (`{video}.{lang}.number{N}.srt`)
+- **Fallback Handling**: Provides manual search interface when automatic matching fails
+
+**Files Created**: `{video_basename}.{lang}.number{N}.srt` files from OpenSubtitles database  
+**Manual Input**: [Manual Input 3] - Search term specification and subtitle selection
 
 </details>
 
-> ✅ **Phase 4 Summary**  
-> AI synchronization with intelligent quality control, manual verification when needed, and comprehensive final analysis.
+<details>
+<summary><strong>🎯 PHASE 4: SYNCHRONIZATION (`synchronisation.py`)</strong></summary>
+
+<br>
+
+**Role of synchronisation.py:**
+The **precision timing expert** that uses AI-powered ffsubsync technology to achieve perfect subtitle synchronization. <br> Employs intelligent quality control and provides manual verification tools for edge cases requiring human judgment.
+
+**Key Functions:**
+- **🤖 AI Synchronization**: Leverages ffsubsync's audio analysis for automatic timing alignment
+- **📊 Quality Assessment**: Uses configurable thresholds to classify sync quality automatically
+- **🎛️ Manual Verification**: Provides interactive tools for fine-tuning problematic subtitles
+- **🧹 Final Cleanup**: Removes temporary files and organizes results for optimal user experience
+
+**Technical Operations:**
+- **AI Synchronization**: Executes `ffsubsync` to align subtitle timestamps with video audio tracks
+- **Offset Calculation**: Compares original vs synchronized timestamps to measure correction accuracy
+- **Quality Thresholds**: Applies configurable accept/reject thresholds (default: 0.05s/0.3s) for automatic processing
+- **Manual Verification**: Creates offset tracking file for subtitles requiring human review
+- **File Cleanup**: Removes `.DRIFT`, `.FAILED`, and redundant numbered subtitle files
+
+**Files Created**: Final synchronized `.srt` files, `movies_with_linear_offset.txt` tracking file  
+**Manual Input**: [Manual Input 4] - Offset verification and timing correction interface
+
+</details>
 
 <br>
 
@@ -1100,9 +1341,10 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.83-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.85-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
+[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 *Happy subtitle processing! 🎯*

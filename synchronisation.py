@@ -1,6 +1,16 @@
 import os, re, subprocess, tempfile, shutil, time, sys, stat, datetime, threading
 from concurrent.futures import ThreadPoolExecutor
 
+def is_running_in_docker():
+    """Check if running inside a Docker container."""
+    try:
+        if os.path.exists('/.dockerenv'):
+            return True
+        with open('/proc/1/cgroup', 'r') as f:
+            return 'docker' in f.read()
+    except:
+        return False
+
 def calculate_subtitle_offset(original_path, synchronized_path):
     """Calculate time offset between original and synchronized subtitle files."""
     try:
@@ -1206,8 +1216,13 @@ def show_offset_verification_details():
         for sub in subfiles:
             print_and_log(f"{Fore.WHITE}Subtitle:    {Fore.GREEN}{sub}{Style.RESET_ALL}")
         print()
+        docker_note = ""
+        if is_running_in_docker():
+            docker_note = f"Note: Your docker container does not have access to your video player, so you'll need to open the video manually.\n"
+        
         vlc_text = (
             f"Choose option 1 to automatically open the video file using your default media player.\n"
+            f"{docker_note}"
             f"If you prefer not to, then you can always open the video file manually:"
         )
         print_and_log(f"{Fore.WHITE}{vlc_text}{Style.RESET_ALL}")
@@ -1258,15 +1273,13 @@ def show_offset_verification_details():
             print_and_log("The video file should now have started. Please especially check for:")
             print_and_log("1. Sentences that are too early or too late compared to the audio.")
             print_and_log("2. Subtitles appearing correctly when actors are talking in a different language.\n")
-            print_and_log("Should there be many subtitles listed (will be cleaned later) and you're not sure which one to pick,")
-            print_and_log("the subtitles we're now manually checking are usually listed at the very bottom.\n")
+            print_and_log("The subtitles we're now manually checking are usually listed at the very bottom.\n")
         else:
             print_and_log("Please open the video file manually at the blue path, then check for the questions below:")
             print_and_log(f"{Fore.CYAN}{folder}{os.sep}{video}{Style.RESET_ALL}")
             print_and_log("1. Check for sentences that are too early or too late compared to the audio.")
             print_and_log("2. Check that subtitles appear correctly when actors are talking in a different language.\n")
-            print_and_log("Should there be many subtitles listed (will be cleaned later) and you're not sure which one to pick,")
-            print_and_log("the subtitles we're now manually checking are usually listed at the very bottom.")
+            print_and_log("The subtitles we're now manually checking are usually listed at the very bottom.")
         print()
         while True:
             lang_display = f"{Fore.LIGHTGREEN_EX}{lang.upper()}{Style.RESET_ALL}"

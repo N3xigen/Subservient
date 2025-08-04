@@ -1,0 +1,20 @@
+# Ignore movie files in the movies directory but keep the folder structure
+movies/*
+!movies/*/
+!movies/*/README.txt
+!movies/.gitkeep
+
+# But ignore video files and subtitle files
+*.mkv
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.srt
+*.ass
+*.ssa
+*.sub
+*.idx
+*.sup

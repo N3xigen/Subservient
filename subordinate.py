@@ -1234,21 +1234,16 @@ def main():
             reconstruct_config()
         elif choice == "7":
             utils.clear_and_print_ascii(BANNER_LINE)
-            subservient_folder = utils.get_subservient_folder()
-            readme_path = subservient_folder / 'README.md'
-            if readme_path.exists():
-                print(f"{Fore.YELLOW}Opening README.md...{Style.RESET_ALL}\n")
-                print(f"{Fore.LIGHTWHITE_EX}If the README didn't open, please find it in the Subservient folder{Style.RESET_ALL}")
-                try:
-                    os.startfile(str(readme_path))
-                except AttributeError:
-                    import platform
-                    if platform.system() == "Darwin":
-                        subprocess.run(["open", str(readme_path)])
-                    else:
-                        subprocess.run(["xdg-open", str(readme_path)])
-            else:
-                print(f"{Fore.LIGHTRED_EX}README.md not found in this folder: {Style.RESET_ALL}{readme_path}")
+            github_readme_url = "https://github.com/N3xigen/Subservient/blob/main/README.md"
+            print(f"{Fore.YELLOW}Opening README on GitHub...{Style.RESET_ALL}\n")
+            print(f"{Fore.LIGHTWHITE_EX}URL: {github_readme_url}{Style.RESET_ALL}")
+            try:
+                import webbrowser
+                webbrowser.open(github_readme_url)
+                print(f"{Fore.GREEN}README opened in your default browser!{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.LIGHTRED_EX}Could not open browser automatically.{Style.RESET_ALL}")
+                print(f"{Fore.LIGHTWHITE_EX}In Docker environments, please copy the URL above and paste it in your browser.{Style.RESET_ALL}")
             input("Press Enter to return to the main menu...")
             print_full_main_menu()
             continue

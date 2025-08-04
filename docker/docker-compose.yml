@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  subservient:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: subservient
+    volumes:
+      - ./movies:/app/movies
+      - ../.config:/app/.config
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ../data:/tmp/data:ro
+      - subservient-home:/root
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    environment:
+      - PYTHONPATH=/app
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+      - FORCE_COLOR=1
+      - PYTHONUNBUFFERED=1
+    command: ["bash", "-c", "cp -r /tmp/data/* /app/data/ 2>/dev/null || true; ln -sf /app/movies/* /app/ 2>/dev/null || true; while true; do sed -i 's|subservient_anchor=/app/movies|subservient_anchor=/app|; s|subordinate_path=/app/movies/subordinate.py|subordinate_path=/app/subordinate.py|' /root/.config/Subservient/Subservient_pathfiles 2>/dev/null || true; sleep 1; done & python subordinate.py"]
+
+volumes:
+  subservient-home:

@@ -1,0 +1,5 @@
+# This file ensures the movies directory is tracked in git
+# Place your movie folders here:
+# - Movie.Name.2023/
+#   - Movie.Name.2023.mkv
+#   - Subs/
