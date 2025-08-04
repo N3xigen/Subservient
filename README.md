@@ -336,7 +336,7 @@ Docker provides a completely self-contained Subservient environment with all dep
    ```
 
 2. **Prepare your content:**
-<br>
+
 Place your video files in the `movies` folder and configure OpenSubtitles credentials in the main `.config` file.
    ```
    docker/
@@ -345,12 +345,12 @@ Place your video files in the `movies` folder and configure OpenSubtitles creden
    └── data/            # ← Subtitle backups (auto-generated)
    ```
 
-3. **Start Subservient:**
+4. **Start Subservient:**
    ```bash
    docker-compose up -d
    ```
 
-4. **Access Subservient:**
+5. **Access Subservient:**
    ```bash
    docker exec -it subservient bash
    python subordinate.py
@@ -1352,5 +1352,6 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
