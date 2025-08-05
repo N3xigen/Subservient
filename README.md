@@ -229,14 +229,6 @@ Remove advertisements, promotional content, and unwanted text from .srt files us
 3. Choose "Subtitle Cleaner" (Option 1)
 4. Select either "Clean subtitle files" or "Restore subtitle changes"
 
-#### **🔮 Future Tools**
-Additional subtitle manipulation tools will be added in future updates including:
-- Manual synchronization adjustments
-- Batch subtitle format conversion  
-- Subtitle merging and splitting utilities
-
-These tools work independently of the main Subservient process and can be used to enhance your subtitle files before or after synchronization.
-
 </details>
 
 </details>
@@ -416,14 +408,6 @@ For Unraid users, use these container settings:
 | **Rebuild** | `docker-compose up --build -d` |
 | **Enter container** | `docker exec -it subservient bash` |
 
-### 🔒 Data Persistence
-
-All important data is automatically preserved:
-- **Configuration settings** persist via shared `.config` file
-- **Subtitle backups** persist in `data/subtitle_backups/`
-- **Processing logs** persist in `logs/` volume
-- **Pathfile configuration** automatically maintained in container
-
 ### 🚀 Performance Optimization
 
 Docker containers have resource limits that can slow down intensive operations like subtitle synchronization. For better performance:
@@ -600,7 +584,7 @@ For instance, batch processing for movies is achieved when `subordinate.py` is p
 
 ### 🎯 Running the Process
 
-1. Run `subordinate.py` → Choose option 1 → Read checklist → Confirm
+1. Run `subordinate.py` → Choose option 1 → Read pre-flight checklist → Confirm
 2. Subservient processes automatically based on `.config` settings
 3. Manual input only needed for edge cases (bad configs, series detection, etc.)
 
@@ -1231,12 +1215,6 @@ Subservient is actively developed with exciting new features planned! Here's wha
 | ⚡ **Medium** | 📊 Smarter subtitle search queries | v1.06 | More fallbacks for more comprehensive searches |
 | ⚡ **Medium** | 🔄 Asynchronous synchronisation (whaat?) | v1.08 | Synchronizing multiple videos simultaneously
 
-### 🎯 Long-term potential ideas that I might be doing (2025-2027)
-
-- **🌐 Web Interface**: Browser-based control panel for remote management
-- **📱 Mobile App**: iOS/Android companion for monitoring progress
-- **🔌 Plugin System**: Third-party extensions and intricate customizability 
-
 ### 💬 Community Suggestions Welcome!
 
 **Have an idea for Subservient?** Feel free to post your ideas in the Subservient GitHub repo! 
@@ -1283,17 +1261,6 @@ Beyond being a platform for optional financial support, my [Buy Me a Coffee page
 - **🎯 Development Roadmap**: Insights into what's coming next and how community feedback shapes development priorities
 
 Whether you choose to support financially or just follow along, it's a great way to stay connected with the ongoing development of Subservient and discover other automation tools I'm building!
-
-### 🔧 Support & Response
-
-| Support Level | What You Get | Method |
-|---------------|-------------|--------|
-| 🆓 **Community** | GitHub issues, community help | GitHub Repo |
-| 💬 **BMAC Follower** | Supporter updates, posts, community | BMAC ($1+/month) |
-| ☕ **Coffee Supporter** | Priority responses, shoutout credits | BMAC ($2+/month) |
-| 🎯 **VIP Support** | Discord support access | Discord ($4+/month) |
-| 🚀 **Early Access** | Pre-release builds, 2-month early access | Repository ($8+/month) |
-| 🔥 **Live Development** | Real-time repo access, video shoutouts | Repository ($16+/month) |
 
 > 🙏 **A Heartfelt Thank You**
 > 
