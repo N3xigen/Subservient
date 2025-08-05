@@ -328,7 +328,9 @@ Docker provides a completely self-contained Subservient environment with all dep
    ```
 
 2. **Prepare your content:**
+
 <br>
+
 Place your video files in the `movies` folder and configure OpenSubtitles credentials in the main `.config` file.
    ```
    docker/
@@ -1327,5 +1329,6 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
