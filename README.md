@@ -336,7 +336,7 @@ Docker provides a completely self-contained Subservient environment with all dep
    ```
 
 2. **Prepare your content:**
-
+<br>
 Place your video files in the `movies` folder and configure OpenSubtitles credentials in the main `.config` file.
    ```
    docker/
@@ -345,12 +345,12 @@ Place your video files in the `movies` folder and configure OpenSubtitles creden
    └── data/            # ← Subtitle backups (auto-generated)
    ```
 
-4. **Start Subservient:**
+3. **Start Subservient:**
    ```bash
    docker-compose up -d
    ```
 
-5. **Access Subservient:**
+4. **Access Subservient:**
    ```bash
    docker exec -it subservient bash
    python subordinate.py
@@ -389,7 +389,7 @@ docker exec subservient python subordinate.py
 
 #### **Unraid Template**
 For Unraid users, use these container settings:
-- **Repository:** `ghcr.io/n3xigen/subservient:latest` (when available)
+- **Repository:** `ghcr.io/n3xigen/subservient:latest`
 - **Network Type:** `bridge`
 - **Console Shell Command:** `bash`
 - **Host Paths:**
@@ -397,6 +397,14 @@ For Unraid users, use these container settings:
   - `/mnt/user/appdata/subservient/logs/` → `/app/logs`
   - `/mnt/user/appdata/subservient/data/` → `/app/data`
   - `/mnt/user/appdata/subservient/.config` → `/app/.config`
+
+> 💡 **Alternative (Local Build):** If you prefer to build locally or the image isn't available yet:
+> ```bash
+> git clone https://github.com/N3xigen/Subservient.git
+> cd Subservient/docker
+> docker-compose build
+> ```
+> Then use `subservient:latest` as repository name instead.
 
 ### ⚙️ Docker Commands
 
@@ -1339,7 +1347,6 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <br><br><br><br>
 ---
 <div align="center">
-
 **🎬 Made with ❤️ for the subtitle automation community**
 
 [![Version](https://img.shields.io/badge/version-v0.85-brightgreen.svg)](https://github.com/N3xigen/Subservient)
@@ -1353,7 +1360,5 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
-
-
 
 
