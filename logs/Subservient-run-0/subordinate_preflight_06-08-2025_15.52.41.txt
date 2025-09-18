@@ -1,0 +1,36 @@
+Subservient Pre-Flight Checklist Log
+==================================================
+Log created: 2025-08-06 15:52:41
+==================================================
+
+  [ Subservient Pre-Flight Checklist ]
+
+  Location:         C:\Users\Nexigen\Desktop\testactual
+  Mode:             Movie mode
+  Processing type:  Batch processing
+  Maps found:       4
+  ❌ ERROR: TV Series detected in video mode!
+      Found 8 folder(s) with 3+ videos (likely series)
+      • 13.Reasons.Why.S01.1080p.NF.WEBRip.DD.5.1.x265-EDGE2020 (13 videos)
+      • 13.Reasons.Why.S01.1080p.NF.WEBRip.DD.5.1.x265-EDGE2020\13 reasons why season 3 (13 videos)
+      • 13.reasons.why.S02 (13 videos)
+      ... and 5 more folder(s)
+      Video mode requires a series-free environment!
+  Subtitle languages to find:   en
+  Audio track languages to keep: en,ja
+  Subtitle downloads per batch: 3
+  Extra video handling:   Move extra videos to 'Extras' folder
+  Subtitle delay threshold:   2.5s
+
+⚠️  CANNOT START - SERIES DETECTED IN VIDEO MODE
+     Found folders with 3+ videos that appear to be TV series
+     In video mode, series content is NOT allowed in the scan area
+
+     Please fix this by:
+     • Moving all TV series to a completely separate location
+     • Only keep individual movie files in this scan area
+     • OR set series_mode=true if this location is for TV series only
+
+     Series and movies cannot be processed together!
+
+  1 = Exit to fix configuration

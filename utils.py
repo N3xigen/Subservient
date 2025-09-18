@@ -1215,6 +1215,476 @@ def display_subtitle_list_for_restore(video_path, video_name, subtitle_files):
         except ValueError:
             print(f"{Fore.RED}Invalid input. Please enter a number.{Style.RESET_ALL}")
 
+def detect_series_structure(local_path):
+    """Detect TV series structure with simple logic.
+    
+    Simple algorithm:
+    1. Look next to subordinate.py (same folder)
+    2. Find seasons? → Count duplicates → That's the number of series
+    3. Find folders without season indication? → Dive in and repeat step 1
+    
+    Returns a dictionary with series detection information.
+    """
+    video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
+
+    def count_videos_in_folder(folder_path, max_depth=2, current_depth=0):
+        """Count video files in folder and subfolders up to max_depth."""
+        total_videos = 0
+        if current_depth >= max_depth:
+            return total_videos
+            
+        try:
+            for item in folder_path.iterdir():
+                if item.is_file() and item.suffix.lower() in video_exts:
+                    total_videos += 1
+                elif item.is_dir() and current_depth < max_depth - 1:
+                    total_videos += count_videos_in_folder(item, max_depth, current_depth + 1)
+        except (PermissionError, OSError):
+            pass
+        return total_videos
+
+    def is_season_folder(folder_name):
+        """Check if folder name indicates it's a season folder."""
+        season_patterns = [
+            # Standard S patterns
+            r'\b[Ss](\d+)\b',                    # S1, S01, s1, s01
+            r'\b[Ss]\.(\d+)\b',                  # S.1, s.01
+            r'\b[Ss]-(\d+)\b',                   # S-1, s-01
+            r'\b[Ss]_(\d+)\b',                   # S_1, s_01
+            
+            # Season word patterns
+            r'\b[Ss]eason\s*(\d+)\b',            # Season 1, season 01, Season1
+            r'\b[Ss]eason\.\s*(\d+)\b',          # Season.1, season.01
+            r'\b[Ss]eason-\s*(\d+)\b',           # Season-1, season-01
+            r'\b[Ss]eason_\s*(\d+)\b',           # Season_1, season_01
+            
+            # International variants
+            r'\b[Ss]érie\s*(\d+)\b',             # Série 1 (French)
+            r'\b[Ss]eizoen\s*(\d+)\b',           # Seizoen 1 (Dutch)
+            r'\b[Ss]aison\s*(\d+)\b',            # Saison 1 (French)
+            r'\b[Ss]taffel\s*(\d+)\b',           # Staffel 1 (German)
+            r'\b[Tt]emporada\s*(\d+)\b',         # Temporada 1 (Spanish)
+            r'\b[Ss]tagione\s*(\d+)\b',          # Stagione 1 (Italian)
+            
+            # X patterns
+            r'\b[Ss]x(\d+)\b',                   # Sx01, sx1, Sx1
+            r'\b[Xx](\d+)\b',                    # X01, x01, X1, x1
+            r'\b[Xx]\.(\d+)\b',                  # X.01, x.1
+            r'\b[Xx]-(\d+)\b',                   # X-01, x-1
+            r'\b[Xx]_(\d+)\b',                   # X_01, x_1
+            
+            # Alternative patterns
+            r'\b(\d+)[xX]\d+\b',                 # 1x01, 1X01 (season x episode)
+            r'\b[Tt]ier\s*(\d+)\b',              # Tier 1
+            r'\b[Pp]art\s*(\d+)\b',              # Part 1
+            r'\b[Vv]ol(?:ume)?\s*(\d+)\b',       # Vol 1, Volume 1
+            r'\b[Bb]ook\s*(\d+)\b',              # Book 1
+            r'\b[Cc]ycle\s*(\d+)\b',             # Cycle 1
+            r'\b[Aa]rc\s*(\d+)\b',               # Arc 1
+            
+            # Numeric only patterns (more restrictive)
+            r'^\s*(\d+)\s*$',                    # Just "1", "01" etc (only if entire name)
+            r'\b(\d+)(?:st|nd|rd|th)\s*[Ss]eason\b',  # 1st Season, 2nd Season
+        ]
+        
+        for pattern in season_patterns:
+            if re.search(pattern, folder_name, re.IGNORECASE):
+                return True
+        return False
+
+    def get_season_number(folder_name):
+        """Extract season number from folder name."""
+        season_patterns = [
+            # Standard S patterns
+            r'\b[Ss](\d+)\b',                    # S1, S01, s1, s01
+            r'\b[Ss]\.(\d+)\b',                  # S.1, s.01
+            r'\b[Ss]-(\d+)\b',                   # S-1, s-01
+            r'\b[Ss]_(\d+)\b',                   # S_1, s_01
+            
+            # Season word patterns
+            r'\b[Ss]eason\s*(\d+)\b',            # Season 1, season 01, Season1
+            r'\b[Ss]eason\.\s*(\d+)\b',          # Season.1, season.01
+            r'\b[Ss]eason-\s*(\d+)\b',           # Season-1, season-01
+            r'\b[Ss]eason_\s*(\d+)\b',           # Season_1, season_01
+            
+            # International variants
+            r'\b[Ss]érie\s*(\d+)\b',             # Série 1 (French)
+            r'\b[Ss]eizoen\s*(\d+)\b',           # Seizoen 1 (Dutch)
+            r'\b[Ss]aison\s*(\d+)\b',            # Saison 1 (French)
+            r'\b[Ss]taffel\s*(\d+)\b',           # Staffel 1 (German)
+            r'\b[Tt]emporada\s*(\d+)\b',         # Temporada 1 (Spanish)
+            r'\b[Ss]tagione\s*(\d+)\b',          # Stagione 1 (Italian)
+            
+            # X patterns
+            r'\b[Ss]x(\d+)\b',                   # Sx01, sx1, Sx1
+            r'\b[Xx](\d+)\b',                    # X01, x01, X1, x1
+            r'\b[Xx]\.(\d+)\b',                  # X.01, x.1
+            r'\b[Xx]-(\d+)\b',                   # X-01, x-1
+            r'\b[Xx]_(\d+)\b',                   # X_01, x_1
+            
+            # Alternative patterns
+            r'\b(\d+)[xX]\d+\b',                 # 1x01, 1X01 (season x episode)
+            r'\b[Tt]ier\s*(\d+)\b',              # Tier 1
+            r'\b[Pp]art\s*(\d+)\b',              # Part 1
+            r'\b[Vv]ol(?:ume)?\s*(\d+)\b',       # Vol 1, Volume 1
+            r'\b[Bb]ook\s*(\d+)\b',              # Book 1
+            r'\b[Cc]ycle\s*(\d+)\b',             # Cycle 1
+            r'\b[Aa]rc\s*(\d+)\b',               # Arc 1
+            
+            # Numeric only patterns (more restrictive)
+            r'^\s*(\d+)\s*$',                    # Just "1", "01" etc (only if entire name)
+            r'\b(\d+)(?:st|nd|rd|th)\s*[Ss]eason\b',  # 1st Season, 2nd Season
+        ]
+        
+        for pattern in season_patterns:
+            match = re.search(pattern, folder_name, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+        return None
+
+    def clean_series_name(folder_name):
+        """Clean folder name to extract series name."""
+        clean_name = folder_name
+        
+        # Remove technical terms
+        unwanted_terms = ['1080p', '720p', '4k', 'uhd', 'web-dl', 'webrip', 'bluray', 'dvdrip', 
+                         'x264', 'x265', 'hevc', 'h264', 'h265', 'rip', 'brrip']
+        for term in unwanted_terms:
+            clean_name = re.sub(rf'\b{re.escape(term)}\b', '', clean_name, flags=re.IGNORECASE)
+        
+        # Replace separators with spaces and normalize
+        clean_name = re.sub(r'[._-]+', ' ', clean_name)
+        clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+        clean_name = re.sub(r'\b\d{4}\b', '', clean_name).strip()  # Remove years
+        
+        return clean_name if len(clean_name) > 2 else folder_name
+
+    def analyze_folder(folder_path, parent_name=None):
+        """Analyze a folder for seasons and return series count.
+        
+        Simple logic:
+        1. Look for season folders
+        2. Count duplicate season numbers = number of series
+        3. Look in non-season folders (containers) and repeat
+        """
+        try:
+            subfolders = [f for f in folder_path.iterdir() if f.is_dir() and count_videos_in_folder(f) > 0]
+            if not subfolders:
+                return 0, {}
+            
+            # Separate season folders from container folders
+            season_folders = []
+            container_folders = []
+            
+            for subfolder in subfolders:
+                if is_season_folder(subfolder.name):
+                    season_folders.append(subfolder)
+                else:
+                    container_folders.append(subfolder)
+            
+            total_series = 0
+            all_series_info = {}
+            
+            # Step 1: Count series in season folders (look for duplicates)
+            if season_folders:
+                season_numbers = []
+                for season_folder in season_folders:
+                    season_num = get_season_number(season_folder.name)
+                    if season_num is not None:
+                        season_numbers.append(season_num)
+                
+                if season_numbers:
+                    # Count duplicates
+                    season_counts = {}
+                    for season_num in season_numbers:
+                        season_counts[season_num] = season_counts.get(season_num, 0) + 1
+                    
+                    # Find the highest count for any season number
+                    max_count = max(season_counts.values())
+                    
+                    if max_count > 1:
+                        # Multiple series detected - number of series = highest duplicate count
+                        series_count_here = max_count
+                        total_series += series_count_here
+                        
+                        # Create series info
+                        folder_name = parent_name or folder_path.name
+                        clean_name = clean_series_name(folder_name)
+                        for i in range(series_count_here):
+                            series_name = f"{clean_name} (Series {i+1})" if series_count_here > 1 else clean_name
+                            all_series_info[series_name] = season_numbers
+                    else:
+                        # Single series (all season numbers are unique)
+                        total_series += 1
+                        folder_name = parent_name or folder_path.name
+                        clean_name = clean_series_name(folder_name)
+                        all_series_info[clean_name] = season_numbers
+            
+            # Step 2: Look in container folders (no season indication)
+            for container_folder in container_folders:
+                container_series, container_info = analyze_folder(container_folder, container_folder.name)
+                total_series += container_series
+                all_series_info.update(container_info)
+            
+            return total_series, all_series_info
+            
+        except (PermissionError, OSError):
+            return 0, {}
+
+    # Start analysis from the local path (next to subordinate.py)
+    series_count, series_info = analyze_folder(local_path)
+    
+    # Create folder analysis for compatibility
+    video_folders = []
+    for folder in local_path.iterdir():
+        if folder.is_dir():
+            total_video_count = count_videos_in_folder(folder, max_depth=3)
+            if total_video_count > 0:
+                video_folders.append({
+                    'path': folder,
+                    'name': folder.name,
+                    'total_video_count': total_video_count,
+                    'found_seasons': {},
+                    'season_folders': 0
+                })
+
+    # Determine series type and names
+    series_names = list(series_info.keys())
+    
+    if series_count == 0:
+        series_type = 'single'
+        series_detected = len(video_folders) > 0
+    elif series_count == 1:
+        series_type = 'single'
+        series_detected = True
+    else:
+        series_type = 'multiple'
+        series_detected = True
+
+    return {
+        'series_detected': series_detected,
+        'series_type': series_type,
+        'series_names': series_names,
+        'folder_analysis': {
+            'total_folders': len(video_folders),
+            'video_folders': len(video_folders),
+            'folders_info': video_folders,
+            'all_series': series_info
+        }
+    }
+
+def detect_potential_series_in_video_mode(local_path, config_path=None):
+    """Detect folders with 3+ video files in video (non-series) mode.
+    
+    This function scans all directories and subdirectories for folders containing 
+    3 or more video files, which might indicate series mixed with movies.
+    Used to warn users when series_mode=false but series-like content is detected.
+    
+    Returns a dictionary with potential series folder information.
+    """
+    video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
+    skip_dirs = get_skip_dirs_from_config(config_path)
+    
+    def count_videos_in_folder(folder_path):
+        """Count video files directly in folder (not recursively)."""
+        try:
+            return sum(1 for item in folder_path.iterdir() 
+                      if item.is_file() and item.suffix.lower() in video_exts)
+        except (PermissionError, OSError):
+            return 0
+    
+    def should_skip_folder(folder_name):
+        """Check if folder should be skipped based on skip_dirs config."""
+        return folder_name.lower() in skip_dirs
+    
+    def scan_directory_recursive(directory, max_depth=3, current_depth=0):
+        """Recursively scan directory for folders with 3+ videos."""
+        potential_series = []
+        
+        if current_depth >= max_depth:
+            return potential_series
+        
+        try:
+            for item in directory.iterdir():
+                if not item.is_dir():
+                    continue
+                
+                # Skip folders in skip_dirs config
+                if should_skip_folder(item.name):
+                    continue
+                
+                # Count videos directly in this folder
+                video_count = count_videos_in_folder(item)
+                
+                if video_count >= 3:
+                    potential_series.append({
+                        'path': item,
+                        'name': item.name,
+                        'video_count': video_count,
+                        'relative_path': str(item.relative_to(local_path))
+                    })
+                
+                # Continue recursively scanning subdirectories
+                if current_depth < max_depth - 1:
+                    sub_potential = scan_directory_recursive(item, max_depth, current_depth + 1)
+                    potential_series.extend(sub_potential)
+        
+        except (PermissionError, OSError):
+            pass
+        
+        return potential_series
+    
+    # Start scanning from the local path
+    potential_series_folders = scan_directory_recursive(local_path)
+    
+    # Sort by video count (highest first) for better display
+    potential_series_folders.sort(key=lambda x: x['video_count'], reverse=True)
+    
+    return {
+        'has_potential_series': len(potential_series_folders) > 0,
+        'potential_series_count': len(potential_series_folders),
+        'potential_series_folders': potential_series_folders,
+        'total_videos_in_potential_series': sum(folder['video_count'] for folder in potential_series_folders)
+    }
+
+def detect_potential_movies_in_series_mode(local_path, config_path=None):
+    """Detect folders with single videos or non-series naming in series mode.
+    
+    This function scans all directories for folders containing single video files
+    or folders without season/episode naming patterns, which might indicate 
+    movies mixed with series content.
+    Used to warn users when series_mode=true but movie-like content is detected.
+    
+    Returns a dictionary with potential movie folder information.
+    """
+    video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
+    skip_dirs = get_skip_dirs_from_config(config_path)
+    
+    def count_videos_in_folder(folder_path):
+        """Count video files directly in folder (not recursively)."""
+        try:
+            return sum(1 for item in folder_path.iterdir() 
+                      if item.is_file() and item.suffix.lower() in video_exts)
+        except (PermissionError, OSError):
+            return 0
+    
+    def should_skip_folder(folder_name):
+        """Check if folder should be skipped based on skip_dirs config."""
+        return folder_name.lower() in skip_dirs
+    
+    def has_series_naming_pattern(name):
+        """Check if folder or file name has series/season/episode naming patterns."""
+        series_patterns = [
+            # Season patterns
+            r'\b[Ss](\d+)\b',                    # S1, S01, s1, s01
+            r'\b[Ss]eason\s*(\d+)\b',            # Season 1, season 01
+            r'\b[Ss]érie\s*(\d+)\b',             # Série 1 (French)
+            r'\b[Ss]eizoen\s*(\d+)\b',           # Seizoen 1 (Dutch)
+            r'\b[Ss]aison\s*(\d+)\b',            # Saison 1 (French)
+            r'\b[Ss]taffel\s*(\d+)\b',           # Staffel 1 (German)
+            r'\b[Tt]emporada\s*(\d+)\b',         # Temporada 1 (Spanish)
+            r'\b[Ss]tagione\s*(\d+)\b',          # Stagione 1 (Italian)
+            
+            # Episode patterns
+            r'\b[Ee](\d+)\b',                    # E01, e1, E1
+            r'\b[Ee]pisode\s*(\d+)\b',           # Episode 1, episode 01
+            r'\bEp\s*(\d+)\b',                   # Ep 1, Ep01
+            
+            # Combined patterns
+            r'\b(\d+)[xX](\d+)\b',               # 1x01, 1X01 (season x episode)
+            r'\b[Ss](\d+)[Ee](\d+)\b',           # S1E01, s01e01
+            r'\b[Ss](\d+)\s*[Ee](\d+)\b',        # S1 E01, s01 e01
+            
+            # Alternative patterns
+            r'\b[Pp]art\s*(\d+)\b',              # Part 1
+            r'\b[Vv]ol(?:ume)?\s*(\d+)\b',       # Vol 1, Volume 1
+        ]
+        
+        for pattern in series_patterns:
+            if re.search(pattern, name, re.IGNORECASE):
+                return True
+        return False
+    
+    def get_video_files_in_folder(folder_path):
+        """Get list of video files in folder."""
+        try:
+            return [item for item in folder_path.iterdir() 
+                   if item.is_file() and item.suffix.lower() in video_exts]
+        except (PermissionError, OSError):
+            return []
+    
+    def scan_directory_recursive(directory, max_depth=3, current_depth=0):
+        """Recursively scan directory for folders with movie-like content."""
+        potential_movies = []
+        
+        if current_depth >= max_depth:
+            return potential_movies
+        
+        try:
+            for item in directory.iterdir():
+                if not item.is_dir():
+                    continue
+                
+                # Skip folders in skip_dirs config
+                if should_skip_folder(item.name):
+                    continue
+                
+                # Get videos in this folder
+                video_files = get_video_files_in_folder(item)
+                video_count = len(video_files)
+                
+                # Check if this looks like a movie folder
+                is_potential_movie = False
+                
+                # Case 1: Folder with exactly 1 video file
+                if video_count == 1:
+                    video_file = video_files[0]
+                    # Check if neither folder nor file has series naming
+                    if not has_series_naming_pattern(item.name) and not has_series_naming_pattern(video_file.stem):
+                        is_potential_movie = True
+                
+                # Case 2: Folder with multiple videos but no series naming patterns
+                elif video_count > 1:
+                    # Check folder name
+                    folder_has_series_pattern = has_series_naming_pattern(item.name)
+                    # Check if any video files have series patterns
+                    files_have_series_pattern = any(has_series_naming_pattern(vf.stem) for vf in video_files)
+                    
+                    if not folder_has_series_pattern and not files_have_series_pattern:
+                        is_potential_movie = True
+                
+                if is_potential_movie:
+                    potential_movies.append({
+                        'path': item,
+                        'name': item.name,
+                        'video_count': video_count,
+                        'relative_path': str(item.relative_to(local_path)),
+                        'video_files': [vf.name for vf in video_files]
+                    })
+                
+                # Continue recursively scanning subdirectories
+                if current_depth < max_depth - 1:
+                    sub_potential = scan_directory_recursive(item, max_depth, current_depth + 1)
+                    potential_movies.extend(sub_potential)
+        
+        except (PermissionError, OSError):
+            pass
+        
+        return potential_movies
+    
+    # Start scanning from the local path
+    potential_movie_folders = scan_directory_recursive(local_path)
+    
+    # Sort by folder name for consistent display
+    potential_movie_folders.sort(key=lambda x: x['name'].lower())
+    
+    return {
+        'has_potential_movies': len(potential_movie_folders) > 0,
+        'potential_movie_count': len(potential_movie_folders),
+        'potential_movie_folders': potential_movie_folders,
+        'total_videos_in_potential_movies': sum(folder['video_count'] for folder in potential_movie_folders)
+    }
+
 def run_subtitle_tools_menu():
     """Main subtitle tools menu interface."""
     while True:

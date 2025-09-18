@@ -1,0 +1,36 @@
+Subservient Pre-Flight Checklist Log
+==================================================
+Log created: 2025-08-06 22:36:44
+==================================================
+
+  [ Subservient Pre-Flight Checklist ]
+
+  Location:         C:\Users\Nexigen\Videos
+  Mode:             Movie mode
+  Processing type:  Single file processing
+  Maps found:       1
+  ❌ ERROR: TV Series detected in video mode!
+      Found 1 folder(s) with 3+ videos (likely series)
+      • Screen Recordings (3 videos)
+      Video mode requires a series-free environment!
+  Subtitle languages to find:   en
+  Audio track languages to keep: en,ja
+  Subtitle downloads per batch: 3
+  Extra video handling:   Move extra videos to 'Extras' folder
+  Subtitle delay threshold:   2.5s
+
+⚠️  CANNOT START - SERIES DETECTED IN VIDEO MODE
+     Found folders with 3+ videos that appear to be TV series
+     In video mode, series content is NOT allowed in the scan area
+
+     Please fix this by:
+     • Moving all TV series to a completely separate location
+     • Only keep individual movie files in this scan area
+     • OR set series_mode=true if this location is for TV series only
+
+     Series and movies cannot be processed together!
+
+  1 = Exit to fix configuration
+[Subservient] Exiting due to series content in video mode.
+Required action: Remove all TV series from this location and its subfolders.
+Video mode is only for individual movie files - no TV series allowed.

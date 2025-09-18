@@ -1,6 +1,9 @@
 import os
 import sys
 import subprocess
+import datetime
+import re
+from pathlib import Path
 try:
     from colorama import init, Fore, Style
     init(autoreset=True)
@@ -101,6 +104,95 @@ import requests
 
 BANNER_LINE = f"                   {Fore.LIGHTRED_EX}[Phase 1/4]{Style.RESET_ALL} Subservient Set-up"
 
+# Initialize logging
+def setup_logging():
+    """Set up logging for subordinate.py pre-flight checklist."""
+    global LOG_FILE, LOGS_DIR
+    
+    # Get anchor path
+    config_dir = Path(user_config_dir()) / "Subservient"
+    pathfile = config_dir / "Subservient_pathfiles"
+    anchor_path = Path(__file__).parent.resolve()
+    
+    if pathfile.exists():
+        try:
+            with open(pathfile, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("utils_path="):
+                        utils_path = Path(line.split("=", 1)[1].strip())
+                        anchor_path = utils_path.parent
+                        break
+        except Exception:
+            pass
+    
+    # Read run counter from config
+    config_path = anchor_path / '.config'
+    run_counter = 1
+    if config_path.exists():
+        try:
+            with open(config_path, encoding='utf-8') as f:
+                for line in f:
+                    if line.strip().lower().startswith('run_counter'):
+                        try:
+                            run_counter = int(line.split('=', 1)[1].strip())
+                        except:
+                            run_counter = 1
+                        break
+        except Exception:
+            pass
+    
+    # Set up snapshot directory (same as other modules)
+    snapshot_dir = anchor_path
+    
+    # Create logs directory
+    LOGS_DIR = snapshot_dir / 'logs' / f'Subservient-run-{run_counter}'
+    try:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        LOGS_DIR = None
+        LOG_FILE = None
+        return
+    
+    # Create log file
+    log_time = datetime.now().strftime('%d-%m-%Y_%H.%M.%S')
+    LOG_FILE = LOGS_DIR / f"subordinate_preflight_{log_time}.txt"
+    
+    # Initialize log file with ASCII art
+    try:
+        with LOG_FILE.open('w', encoding='utf-8') as f:
+            f.write(strip_ansi("Subservient Pre-Flight Checklist Log") + '\n')
+            f.write('=' * 50 + '\n')
+            f.write(f"Log created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write('=' * 50 + '\n\n')
+    except Exception:
+        LOG_FILE = None
+
+def strip_ansi(text):
+    """Remove ANSI color codes from text."""
+    ansi_escape = re.compile(r'\x1b\[[0-9;]*m|\033\[[0-9;]*m')
+    return ansi_escape.sub('', text)
+
+def print_and_log(msg, end='\n'):
+    """Print message to console and write to log file."""
+    print(msg, end=end)
+    if LOG_FILE:
+        try:
+            with LOG_FILE.open('a', encoding='utf-8') as f:
+                f.write(strip_ansi(msg) + ('' if end == '' else end))
+        except Exception:
+            pass  # Continue silently if logging fails
+
+def sub_tag():
+    """Return formatted subordinate tag for console output."""
+    return f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL}"
+
+# Initialize logging variables
+LOG_FILE = None
+LOGS_DIR = None
+
+# Set up logging when module is imported
+setup_logging()
+
 def write_anchor_to_pathfile():
     """Write current directory path to Subservient pathfiles config.
     
@@ -160,6 +252,7 @@ def print_subservient_checklist():
     
     Shows current configuration and video processing settings including mode,
     processing type, language settings, and other important parameters.
+    For series mode, provides TV series detection and analysis.
     """
     config_dir = Path(user_config_dir()) / "Subservient"
     pathfile = config_dir / "Subservient_pathfiles"
@@ -192,16 +285,35 @@ def print_subservient_checklist():
     video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
     direct_videos = [f for f in local_path.iterdir() if f.is_file() and f.suffix.lower() in video_exts]
     
-    if direct_videos:
-        processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
-        maps_found = f"{Fore.GREEN}1{Style.RESET_ALL}"
-    else:
-        subfolders = [f for f in local_path.iterdir() if f.is_dir()]
-        count = sum(1 for folder in subfolders if [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in video_exts])
-        processing_type = f"{Fore.CYAN}Batch processing{Style.RESET_ALL}"
-        maps_found = f"{Fore.GREEN}{count}{Style.RESET_ALL}"
+    is_series_mode = series_mode and series_mode.strip().lower() == 'true'
     
-    mode = (f"{Fore.GREEN}Series mode{Style.RESET_ALL}" if series_mode and series_mode.strip().lower() == 'true' 
+    if is_series_mode:
+        series_info = utils.detect_series_structure(local_path)
+        
+        if direct_videos:
+            processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
+            folder_count_display = f"{Fore.GREEN}1{Style.RESET_ALL}"
+        else:
+            if series_info['series_detected']:
+                if series_info['series_type'] == 'single':
+                    processing_type = f"{Fore.CYAN}Single TV series{Style.RESET_ALL}"
+                else:
+                    processing_type = f"{Fore.CYAN}Multiple TV series{Style.RESET_ALL}"
+                folder_count_display = f"{Fore.GREEN}{series_info['folder_analysis']['video_folders']}{Style.RESET_ALL}"
+            else:
+                processing_type = f"{Fore.CYAN}Batch processing{Style.RESET_ALL}"
+                folder_count_display = f"{Fore.RED}0{Style.RESET_ALL}"
+    else:
+        if direct_videos:
+            processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
+            folder_count_display = f"{Fore.GREEN}1{Style.RESET_ALL}"
+        else:
+            subfolders = [f for f in local_path.iterdir() if f.is_dir()]
+            count = sum(1 for folder in subfolders if [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in video_exts])
+            processing_type = f"{Fore.CYAN}Batch processing{Style.RESET_ALL}"
+            folder_count_display = f"{Fore.GREEN}{count}{Style.RESET_ALL}"
+    
+    mode = (f"{Fore.GREEN}TV Series mode{Style.RESET_ALL}" if is_series_mode
             else f"{Fore.GREEN}Movie mode{Style.RESET_ALL}" if series_mode 
             else f"{Fore.RED}N/A (series_mode missing in config){Style.RESET_ALL}")
     
@@ -223,22 +335,87 @@ def print_subservient_checklist():
                     if reject_offset_threshold and reject_offset_threshold.replace('.', '').isdigit()
                     else f"{Fore.RED}N/A{Style.RESET_ALL}")
     
-    print(f"{Style.BRIGHT}{Fore.BLUE}  [ Subservient Pre-Flight Checklist ]{Style.RESET_ALL}\n")
-    print(f"  {Fore.WHITE}Location:{Style.RESET_ALL}         {Fore.LIGHTYELLOW_EX}{short_path}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}Mode:{Style.RESET_ALL}             {mode}")
-    print(f"  {Fore.WHITE}Processing type:{Style.RESET_ALL}  {processing_type}")
-    print(f"  {Fore.WHITE}Maps found:{Style.RESET_ALL}       {maps_found}")
+    print_and_log(f"{Style.BRIGHT}{Fore.BLUE}  [ Subservient Pre-Flight Checklist ]{Style.RESET_ALL}\n")
+    print_and_log(f"  {Fore.WHITE}Location:{Style.RESET_ALL}         {Fore.LIGHTYELLOW_EX}{short_path}{Style.RESET_ALL}")
+    print_and_log(f"  {Fore.WHITE}Mode:{Style.RESET_ALL}             {mode}")
+    print_and_log(f"  {Fore.WHITE}Processing type:{Style.RESET_ALL}  {processing_type}")
+    
+    if is_series_mode:
+        if not direct_videos and 'series_info' in locals():
+            if series_info['series_names']:
+                series_count = len(series_info['series_names'])
+                print_and_log(f"  {Fore.WHITE}Detected series:{Style.RESET_ALL}     {Fore.LIGHTCYAN_EX}{series_count}{Style.RESET_ALL}")
+        
+        # Check for potential movies in series mode
+        potential_movie_info = utils.detect_potential_movies_in_series_mode(local_path, config_path)
+        if potential_movie_info['has_potential_movies']:
+            print_and_log(f"  {Fore.RED}❌ ERROR: Movie content detected in series mode!{Style.RESET_ALL}")
+            print_and_log(f"      {Fore.YELLOW}Found {potential_movie_info['potential_movie_count']} folder(s) with movie-like content{Style.RESET_ALL}")
+            for folder_info in potential_movie_info['potential_movie_folders'][:3]:  # Show max 3 examples
+                if folder_info['video_count'] == 1:
+                    print_and_log(f"      {Fore.LIGHTRED_EX}• {folder_info['relative_path']} (1 video, no series naming){Style.RESET_ALL}")
+                else:
+                    print_and_log(f"      {Fore.LIGHTRED_EX}• {folder_info['relative_path']} ({folder_info['video_count']} videos, no series naming){Style.RESET_ALL}")
+            if potential_movie_info['potential_movie_count'] > 3:
+                remaining = potential_movie_info['potential_movie_count'] - 3
+                print_and_log(f"      {Fore.LIGHTBLACK_EX}... and {remaining} more folder(s){Style.RESET_ALL}")
+            print_and_log(f"      {Fore.WHITE}Series mode requires series-like folder and file naming!{Style.RESET_ALL}")
+        
+        has_series_warning = potential_movie_info['has_potential_movies']
+    else:
+        print_and_log(f"  {Fore.WHITE}Maps found:{Style.RESET_ALL}       {folder_count_display}")
+        
+        # Check for potential series in video mode
+        potential_series_info = utils.detect_potential_series_in_video_mode(local_path, config_path)
+        if potential_series_info['has_potential_series']:
+            print_and_log(f"  {Fore.RED}❌ ERROR: TV Series detected in video mode!{Style.RESET_ALL}")
+            print_and_log(f"      {Fore.YELLOW}Found {potential_series_info['potential_series_count']} folder(s) with 3+ videos (likely series){Style.RESET_ALL}")
+            for folder_info in potential_series_info['potential_series_folders'][:3]:  # Show max 3 examples
+                print_and_log(f"      {Fore.LIGHTRED_EX}• {folder_info['relative_path']} ({folder_info['video_count']} videos){Style.RESET_ALL}")
+            if potential_series_info['potential_series_count'] > 3:
+                remaining = potential_series_info['potential_series_count'] - 3
+                print_and_log(f"      {Fore.LIGHTBLACK_EX}... and {remaining} more folder(s){Style.RESET_ALL}")
+            print_and_log(f"      {Fore.WHITE}Video mode requires a series-free environment!{Style.RESET_ALL}")
+        
+        # Store potential series info for later use
+        has_series_warning = potential_series_info['has_potential_series']
     
     subtitle_langs = config.get('languages', None)
     audio_langs = config.get('audio_track_languages', None)
-    print(f"  {Fore.WHITE}Subtitle languages to find:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{subtitle_langs if subtitle_langs else 'N/A'}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}Audio track languages to keep:{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}{audio_langs if audio_langs else 'N/A'}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}Subtitle downloads per batch:{Style.RESET_ALL} {subtitle_downloads}")
-    print(f"  {Fore.WHITE}Extra video handling:{Style.RESET_ALL}   {delete_status}")
-    print(f"  {Fore.WHITE}Subtitle delay threshold:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{threshold_str}{Style.RESET_ALL}")
-    print(f"\n{Fore.LIGHTYELLOW_EX}  Is everything set correctly?{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}  1{Style.RESET_ALL} = Looks good, start Subservient!")
-    print(f"{Fore.RED}  2{Style.RESET_ALL} = This is incorrect. Exit so that I can fix it")
+    print_and_log(f"  {Fore.WHITE}Subtitle languages to find:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{subtitle_langs if subtitle_langs else 'N/A'}{Style.RESET_ALL}")
+    print_and_log(f"  {Fore.WHITE}Audio track languages to keep:{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}{audio_langs if audio_langs else 'N/A'}{Style.RESET_ALL}")
+    print_and_log(f"  {Fore.WHITE}Subtitle downloads per batch:{Style.RESET_ALL} {subtitle_downloads}")
+    print_and_log(f"  {Fore.WHITE}Extra video handling:{Style.RESET_ALL}   {delete_status}")
+    print_and_log(f"  {Fore.WHITE}Subtitle delay threshold:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{threshold_str}{Style.RESET_ALL}")
+    
+    # Show appropriate menu based on whether there are warnings
+    if has_series_warning:
+        if is_series_mode:
+            print_and_log(f"\n{Fore.RED}⚠️  CANNOT START - MOVIE CONTENT DETECTED IN SERIES MODE{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.YELLOW}Found folders with single videos or non-series naming{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.WHITE}In series mode, all content must follow series naming conventions{Style.RESET_ALL}")
+            print_and_log(f"\n     {Fore.WHITE}Please fix this by:{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Moving all individual movies to a completely separate location{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Using proper season/episode naming (S01E01, 1x01, etc.){Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• OR set series_mode=false if this location is for movies only{Style.RESET_ALL}")
+        else:
+            print_and_log(f"\n{Fore.RED}⚠️  CANNOT START - SERIES DETECTED IN VIDEO MODE{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.YELLOW}Found folders with 3+ videos that appear to be TV series{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.WHITE}In video mode, series content is NOT allowed in the scan area{Style.RESET_ALL}")
+            print_and_log(f"\n     {Fore.WHITE}Please fix this by:{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Moving all TV series to a completely separate location{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Only keep individual movie files in this scan area{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• OR set series_mode=true if this location is for TV series only{Style.RESET_ALL}")
+        
+        print_and_log(f"\n     {Fore.LIGHTRED_EX}Series and movies cannot be processed together!{Style.RESET_ALL}")
+        print_and_log(f"\n{Fore.RED}  1{Style.RESET_ALL} = Exit to fix configuration")
+    else:
+        print_and_log(f"\n{Fore.LIGHTYELLOW_EX}  Is everything set correctly?{Style.RESET_ALL}")
+        print_and_log(f"{Fore.GREEN}  1{Style.RESET_ALL} = Looks good, start Subservient!")
+        print_and_log(f"{Fore.RED}  2{Style.RESET_ALL} = This is incorrect. Exit so that I can fix it")
+    
+    # Return whether there's a series warning
+    return has_series_warning
 def print_main_menu():
     """Display main menu options for Subservient."""
     """Display the main menu options for the Subservient application."""
@@ -1103,38 +1280,49 @@ def main():
         if choice == "1":
             while True:
                 utils.clear_and_print_ascii(BANNER_LINE)
-                print_subservient_checklist()
+                has_series_warning = print_subservient_checklist()
                 config, pause_seconds = get_config_and_pause_seconds()
-                start_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
-                if start_choice == "1":
-                    if not quick_requirements_check():
-                        print_full_main_menu()
-                        continue
-                    
-                    from platformdirs import user_config_dir
-                    config_dir = Path(user_config_dir()) / "Subservient"
-                    pathfile = config_dir / "Subservient_pathfiles"
-                    extraction_path = None
-                    if pathfile.exists():
-                        lines = pathfile.read_text(encoding="utf-8").splitlines()
-                        for l in lines:
-                            if l.startswith("extraction_path="):
-                                extraction_path = l.split("=", 1)[1].strip()
-                                break
-                    if extraction_path and Path(extraction_path).exists():
-                        utils.clear_and_print_ascii(BANNER_LINE)
-                        print(f"{Style.BRIGHT}{Fore.GREEN}[PRE-FLIGHT CHECK PASSED]{Style.RESET_ALL}")
-                        print(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL} Launching extraction.py at: {Fore.YELLOW}{extraction_path}{Style.RESET_ALL}")
-                        print(f"\n{Style.BRIGHT}{Fore.GREEN}Extraction will start in {int(pause_seconds)} seconds...{Style.RESET_ALL}")
-                        time.sleep(pause_seconds)
-                        subprocess.run([sys.executable, extraction_path])
-                        sys.exit(0)
-                    else:
-                        print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} Could not find extraction.py path in the universal pathfile or the file does not exist.")
-                    return
-                elif start_choice == "2":
-                    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting. Please complete your setup and try again.")
-                    return
+                
+                if has_series_warning:
+                    # Only allow exit when there's a series warning
+                    start_choice = input(f"\nPress [{Fore.RED}1{Style.RESET_ALL}] to exit: ").strip()
+                    if start_choice == "1":
+                        print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting due to series content in video mode.")
+                        print_and_log(f"{Fore.YELLOW}Required action: Remove all TV series from this location and its subfolders.{Style.RESET_ALL}")
+                        print_and_log(f"{Fore.WHITE}Video mode is only for individual movie files - no TV series allowed.{Style.RESET_ALL}")
+                        return
+                else:
+                    # Normal operation when no warnings
+                    start_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+                    if start_choice == "1":
+                        if not quick_requirements_check():
+                            print_full_main_menu()
+                            continue
+                        
+                        from platformdirs import user_config_dir
+                        config_dir = Path(user_config_dir()) / "Subservient"
+                        pathfile = config_dir / "Subservient_pathfiles"
+                        extraction_path = None
+                        if pathfile.exists():
+                            lines = pathfile.read_text(encoding="utf-8").splitlines()
+                            for l in lines:
+                                if l.startswith("extraction_path="):
+                                    extraction_path = l.split("=", 1)[1].strip()
+                                    break
+                        if extraction_path and Path(extraction_path).exists():
+                            utils.clear_and_print_ascii(BANNER_LINE)
+                            print_and_log(f"{Style.BRIGHT}{Fore.GREEN}[PRE-FLIGHT CHECK PASSED]{Style.RESET_ALL}")
+                            print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL} Launching extraction.py at: {Fore.YELLOW}{extraction_path}{Style.RESET_ALL}")
+                            print_and_log(f"\n{Style.BRIGHT}{Fore.GREEN}Extraction will start in {int(pause_seconds)} seconds...{Style.RESET_ALL}")
+                            time.sleep(pause_seconds)
+                            subprocess.run([sys.executable, extraction_path])
+                            sys.exit(0)
+                        else:
+                            print_and_log(f"{Fore.RED}[ERROR]{Style.RESET_ALL} Could not find extraction.py path in the universal pathfile or the file does not exist.")
+                        return
+                    elif start_choice == "2":
+                        print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting. Please complete your setup and try again.")
+                        return
         elif choice == "2":
             run_subtitle_coverage_scan()
             print_full_main_menu()
