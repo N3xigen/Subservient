@@ -289,6 +289,13 @@ def read_series_mode_from_config(config_path):
     print_and_log(f"{sync_tag()} {Fore.YELLOW}series_mode not found in config. Defaulting to film mode.{Style.RESET_ALL}")
     return False
 
+def extract_sxxexx_code(name: str) -> str | None:
+    """Extract season/episode code from filename."""
+    import re
+    match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
+    return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
+
+
 def run_ffmpeg_with_progress(cmd, output_path, orig_size):
     """Run ffmpeg command with progress bar based on output file size."""
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -361,13 +368,51 @@ def cleanup_duplicates_in_folder(folder: str, languages):
     for f in files:
         if f.endswith(('.mkv', '.mp4')):
             base_name = os.path.splitext(f)[0]
+            
+            # Extract series code if in series mode
+            sxxexx_code = None
+            if SERIES_MODE:
+                sxxexx_code = extract_sxxexx_code(f)
+            
             for lang in languages:
-                correct = f"{base_name}.{lang}.srt"
-                if os.path.exists(os.path.join(folder, correct)):
+                # Determine correct filename patterns based on mode and content
+                correct_patterns = []
+                
+                if SERIES_MODE and sxxexx_code:
+                    # Series mode with SxxExx code
+                    if sxxexx_code.lower() in base_name.lower():
+                        # Video already has SxxExx in name
+                        correct_patterns.append(f"{base_name}.{lang}.srt")
+                    else:
+                        # Video doesn't have SxxExx
+                        correct_patterns.append(f"{base_name}.{sxxexx_code}.{lang}.srt")
+                else:
+                    # Movie mode or series without clear SxxExx
+                    correct_patterns.append(f"{base_name}.{lang}.srt")
+                
+                # Check if any correct pattern exists
+                correct_exists = any(os.path.exists(os.path.join(folder, pattern)) for pattern in correct_patterns)
+                
+                if correct_exists:
+                    # Clean up numbered files - multiple patterns:
+                    # Pattern 1: filename.number1.lang.srt (old pattern)
+                    # Pattern 2: 1234.lang.number1.S01E01.srt (acquisition pattern)
                     for g in files:
-                        if (g != correct and 
+                        is_numbered_old_pattern = (
+                            g.startswith(f"{base_name}.") and 
+                            f".{lang}.srt" in g and
+                            any(f".number{num}." in g for num in range(1, 100))
+                        )
+                        
+                        is_numbered_acquisition_pattern = (
                             f".{lang}.number" in g and 
                             g.endswith('.srt') and
+                            any(f".number{num}." in g for num in range(1, 100)) and
+                            (sxxexx_code is None or sxxexx_code in g)
+                        )
+                        
+                        if (g not in correct_patterns and 
+                            (is_numbered_old_pattern or is_numbered_acquisition_pattern) and
                             not g.endswith('.FAILED.srt') and
                             not g.endswith('.DRIFT.srt')):
                             try:
@@ -453,7 +498,10 @@ def prompt_and_cleanup_internal_subs():
     """
     global cleaned_internal_subs, not_cleaned_internal_subs, not_cleaned_videos, manual_choices
     total = sum(1 for video in videos if has_internal_subs(video) and any(
-        not os.path.exists(f"{os.path.splitext(video)[0]}.{lang}.srt") for lang in LANGUAGES)
+        not (os.path.exists(f"{os.path.splitext(video)[0]}.{lang}.srt") or 
+             (SERIES_MODE and extract_sxxexx_code(video) and 
+              os.path.exists(f"{os.path.splitext(video)[0]}.{lang}.{extract_sxxexx_code(video)}.srt")))
+        for lang in LANGUAGES)
     )
     idx = 0
     for video in videos:
@@ -462,9 +510,27 @@ def prompt_and_cleanup_internal_subs():
         missing_langs = []
         for lang in LANGUAGES:
             found = False
-            expected = f"{video_basename}.{lang}.srt"
-            if os.path.exists(expected):
+            
+            # Check standard naming: filename.lang.srt
+            expected_standard = f"{video_basename}.{lang}.srt"
+            if os.path.exists(expected_standard):
                 found = True
+            
+            # Check series naming if in series mode
+            if not found and SERIES_MODE:
+                sxxexx_code = extract_sxxexx_code(video)
+                if sxxexx_code:
+                    # Check if video filename already contains the episode code
+                    if sxxexx_code.lower() in video_basename.lower():
+                        # Video already has SxxExx in name, subtitle should use standard naming
+                        expected_series = f"{video_basename}.{lang}.srt"
+                    else:
+                        # Video doesn't have SxxExx, subtitle should have SxxExx before language
+                        expected_series = f"{video_basename}.{sxxexx_code}.{lang}.srt"
+                    
+                    if os.path.exists(expected_series):
+                        found = True
+            
             if not found:
                 all_present = False
                 missing_langs.append(lang)
@@ -528,8 +594,22 @@ def prompt_and_cleanup_internal_subs():
                         lang2 = map_lang_3to2(lang)
                         internal_langs.add(lang2)
                 for lang in LANGUAGES:
-                    expected = f"{video_basename}.{lang}.srt"
-                    if os.path.exists(expected):
+                    found_external = False
+                    
+                    # Check standard naming: filename.lang.srt
+                    expected_standard = f"{video_basename}.{lang}.srt"
+                    if os.path.exists(expected_standard):
+                        found_external = True
+                    
+                    # Check series naming if in series mode: filename.lang.S01E01.srt
+                    if not found_external and SERIES_MODE:
+                        sxxexx_code = extract_sxxexx_code(video)
+                        if sxxexx_code:
+                            expected_series = f"{video_basename}.{lang}.{sxxexx_code}.srt"
+                            if os.path.exists(expected_series):
+                                found_external = True
+                    
+                    if found_external:
                         external_langs.add(lang)
                 present_langs = internal_langs.union(external_langs)
                 duplicates = internal_langs.intersection(external_langs)
@@ -890,11 +970,38 @@ def mark_subtitle_as_drift(subtitle_path, lang, create_copies=False):
         print_and_log(f"{sync_tag()} {Fore.RED}Error marking subtitle as DRIFT: {str(e)}{Style.RESET_ALL}")
         return None
 
-def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True):
+def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True, video=None):
     """Clean up numbered, failed, and drift subtitle files for a language."""
     for f in os.listdir(video_dir):
         full_path = os.path.abspath(os.path.join(video_dir, f))
-        if re.match(rf".*\.{lang}\.number\d+\.srt$", f, re.IGNORECASE):
+        
+        # Series-aware pattern matching
+        is_numbered = False
+        is_failed = False 
+        is_drift = False
+        
+        if SERIES_MODE and video:
+            sxxexx_code = extract_sxxexx_code(video)
+            if sxxexx_code:
+                # Series mode patterns with episode code
+                if re.match(rf".*\.{lang}\.number\d+\.{re.escape(sxxexx_code)}\.srt$", f, re.IGNORECASE):
+                    is_numbered = True
+                elif re.match(rf".*\.{lang}\.number\d+\.{re.escape(sxxexx_code)}\.FAILED\.srt$", f, re.IGNORECASE):
+                    is_failed = True
+                elif re.match(rf".*\.{lang}\.number\d+\.{re.escape(sxxexx_code)}\.DRIFT\.srt$", f, re.IGNORECASE):
+                    is_drift = True
+        
+        # Fallback to movie mode patterns (or if no series episode code)
+        if not (is_numbered or is_failed or is_drift):
+            if re.match(rf".*\.{lang}\.number\d+\.srt$", f, re.IGNORECASE):
+                is_numbered = True
+            elif re.match(rf".*\.{lang}\.number\d+\.FAILED\.srt$", f, re.IGNORECASE):
+                is_failed = True
+            elif re.match(rf".*\.{lang}\.number\d+\.DRIFT\.srt$", f, re.IGNORECASE):
+                is_drift = True
+        
+        # Remove files based on patterns
+        if is_numbered:
             if keep_file and full_path == os.path.abspath(keep_file):
                 continue
             try:
@@ -902,13 +1009,13 @@ def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True)
                 print_and_log(f"{sync_tag()} {Fore.YELLOW}Cleanup: removed numbered sub: {f}{Style.RESET_ALL}")
             except Exception as e:
                 print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {f}: {e}{Style.RESET_ALL}")
-        elif re.match(rf".*\.{lang}\.number\d+\.FAILED\.srt$", f, re.IGNORECASE):
+        elif is_failed:
             try:
                 os.remove(full_path)
                 print_and_log(f"{sync_tag()} {Fore.YELLOW}Cleanup: removed FAILED: {f}{Style.RESET_ALL}")
             except Exception as e:
                 print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {f}: {e}{Style.RESET_ALL}")
-        elif clean_drifts and re.match(rf".*\.{lang}\.number\d+\.DRIFT\.srt$", f, re.IGNORECASE):
+        elif clean_drifts and is_drift:
             try:
                 os.remove(full_path)
                 print_and_log(f"{sync_tag()} {Fore.YELLOW}Cleanup: removed DRIFT: {f}{Style.RESET_ALL}")
@@ -925,20 +1032,77 @@ for idx, video in enumerate(videos, 1):
     video_basename, _ = os.path.splitext(video)
     
     all_subs_exist = True
-    for lang in LANGUAGES:
-        expected = f"{video_basename}.{lang}.srt"
-        if not os.path.exists(expected):
-            all_subs_exist = False
-            break
+    has_numbered_subs = False
     
-    if all_subs_exist:
+    for lang in LANGUAGES:
+        # Check if final subtitles exist (either standard or series naming)
+        final_exists = False
+        
+        # Check standard naming: filename.lang.srt  
+        expected_standard = f"{video_basename}.{lang}.srt"
+        if os.path.exists(expected_standard):
+            final_exists = True
+        
+        # Check series naming if in series mode: filename.lang.S01E01.srt
+        if not final_exists and SERIES_MODE:
+            sxxexx_code = extract_sxxexx_code(video)
+            if sxxexx_code:
+                expected_series = f"{video_basename}.{lang}.{sxxexx_code}.srt"
+                if os.path.exists(expected_series):
+                    final_exists = True
+        
+        # Check if there are numbered subtitle files to sync
+        if not final_exists:
+            import glob
+            # Check for both movie and series patterns
+            if SERIES_MODE:
+                current_episode_code = extract_sxxexx_code(video)
+                if current_episode_code:
+                    # Series pattern: downloads.lang.number1.S01E01.srt (for THIS episode)
+                    numbered_files = glob.glob(os.path.join(video_dir, f"*.{lang}.number*.{current_episode_code}.srt"))
+                else:
+                    numbered_files = []
+                if not numbered_files:
+                    # Fallback to movie pattern
+                    numbered_files = glob.glob(os.path.join(video_dir, f"*.{lang}.number*.srt"))
+            else:
+                # Movie pattern: filename.lang.number1.srt
+                numbered_files = glob.glob(os.path.join(video_dir, f"*.{lang}.number*.srt"))
+                
+            if numbered_files:
+                has_numbered_subs = True
+            all_subs_exist = False
+    
+    if all_subs_exist and not has_numbered_subs:
         print_and_log(f"{sync_tag()} {Fore.GREEN}All required subtitles already exist for this video - skipping{Style.RESET_ALL}")
         continue
     
     candidate_subs = defaultdict(list)
+    current_episode_code = None
+    if SERIES_MODE:
+        current_episode_code = extract_sxxexx_code(video)
+    
     for f in os.listdir(video_dir):
         f_path = os.path.join(video_dir, f)
-        match = re.match(r".*\.(?P<lang>[a-z]{2})\.number\d+\.srt$", f)
+        
+        # Check for both formats:
+        # Movie mode: filename.lang.number1.srt
+        # Series mode: downloads.lang.number1.S01E01.srt
+        match = None
+        
+        if not SERIES_MODE:
+            # Movie mode pattern
+            match = re.match(r".*\.(?P<lang>[a-z]{2})\.number\d+\.srt$", f)
+        else:
+            # Series mode: only match files for THIS episode
+            if current_episode_code:
+                # Try series mode pattern with matching episode code
+                pattern = rf".*\.(?P<lang>[a-z]{{2}})\.number\d+\.{re.escape(current_episode_code)}\.srt$"
+                match = re.match(pattern, f)
+            if not match:
+                # Fallback to movie mode pattern for backwards compatibility
+                match = re.match(r".*\.(?P<lang>[a-z]{2})\.number\d+\.srt$", f)
+                
         if match:
             lang = match.group("lang")
             if lang in LANGUAGES:
@@ -957,8 +1121,22 @@ for idx, video in enumerate(videos, 1):
                 continue
                 
             ext = os.path.splitext(sub)[1].lower()
-            output_ext = f".{lang}{ext}"
-            output_sub = video_basename + output_ext
+            
+            # Determine output filename (series vs standard naming)
+            if SERIES_MODE:
+                sxxexx_code = extract_sxxexx_code(video)
+                if sxxexx_code:
+                    # Check if video filename already contains the episode code
+                    if sxxexx_code.lower() in video_basename.lower():
+                        # Video already has SxxExx in name, use standard naming
+                        output_sub = f"{video_basename}.{lang}{ext}"
+                    else:
+                        # Video doesn't have SxxExx, add it BEFORE language (for media player compatibility)
+                        output_sub = f"{video_basename}.{sxxexx_code}.{lang}{ext}"
+                else:
+                    output_sub = f"{video_basename}.{lang}{ext}"
+            else:
+                output_sub = f"{video_basename}.{lang}{ext}"
             
             if os.path.exists(output_sub):
                 found_good = True
@@ -1002,7 +1180,7 @@ for idx, video in enumerate(videos, 1):
                 successful_syncs_per_lang[lang] = successful_syncs_per_lang.get(lang, 0) + 1
                 processed_subs.add(sub)
                 
-                cleanup_drift_and_failed(video_dir, lang, keep_file=output_sub, clean_drifts=True)
+                cleanup_drift_and_failed(video_dir, lang, keep_file=output_sub, clean_drifts=True, video=video)
                 
                 break
             else:
@@ -1042,7 +1220,21 @@ else:
         video_dir = os.path.dirname(video)
         for lang in LANGUAGES:
             for f in os.listdir(video_dir):
-                if re.match(rf".*\.{lang}\.number\d+\.DRIFT\.srt$", f, re.IGNORECASE):
+                is_drift = False
+                
+                # Series-aware DRIFT detection
+                if SERIES_MODE:
+                    sxxexx_code = extract_sxxexx_code(video)
+                    if sxxexx_code:
+                        # Series pattern: *.lang.number*.S01E02.DRIFT.srt
+                        if re.match(rf".*\.{lang}\.number\d+\.{re.escape(sxxexx_code)}\.DRIFT\.srt$", f, re.IGNORECASE):
+                            is_drift = True
+                
+                # Fallback to movie mode pattern
+                if not is_drift and re.match(rf".*\.{lang}\.number\d+\.DRIFT\.srt$", f, re.IGNORECASE):
+                    is_drift = True
+                
+                if is_drift:
                     try:
                         drift_path = os.path.join(video_dir, f)
                         os.remove(drift_path)
@@ -1057,8 +1249,29 @@ if SERIES_MODE:
     for code, video in sxxexx_to_video.items():
         video_basename, _ = os.path.splitext(video)
         for lang in LANGUAGES:
-            expected = f"{video_basename}.{lang}.srt"
-            if not os.path.exists(expected):
+            found = False
+            
+            # Check standard naming: filename.lang.srt
+            expected_standard = f"{video_basename}.{lang}.srt"
+            if os.path.exists(expected_standard):
+                found = True
+            
+            # Check series naming
+            if not found:
+                sxxexx_code = extract_sxxexx_code(video)
+                if sxxexx_code:
+                    # Check if video filename already contains the episode code
+                    if sxxexx_code.lower() in video_basename.lower():
+                        # Video already has SxxExx in name, subtitle should use standard naming
+                        expected_series = f"{video_basename}.{lang}.srt"
+                    else:
+                        # Video doesn't have SxxExx, subtitle should have SxxExx before language
+                        expected_series = f"{video_basename}.{sxxexx_code}.{lang}.srt"
+                    
+                    if os.path.exists(expected_series):
+                        found = True
+            
+            if not found:
                 all_subs_present = False
                 missing_langs.add(lang)
                 missing_details.setdefault(lang, []).append(video)
@@ -1093,9 +1306,8 @@ def show_offset_verification_menu():
     clear_and_print_ascii(BANNER_LINE)
     print_and_log(f"{Style.BRIGHT}{Fore.CYAN}Offset Correction Verification Menu{Style.RESET_ALL}\n")
     print_and_log(f"{Fore.YELLOW}Detected {Style.BRIGHT}{len(entries)}{Style.NORMAL} subtitle file(s) that had an offset correction.{Style.RESET_ALL}\n")
-    print_and_log(f"These subtitles had offsets above {ACCEPT_OFFSET_THRESHOLD:.3f}s, below {REJECT_OFFSET_THRESHOLD:.3f}s.")
-    print_and_log("Subtitles with smaller offsets were automatically accepted, while those with larger offsets were marked as DRIFT.")
-    print_and_log("Let's manually verify these intermediate cases to ensure the subtitle text matches the audio well enough.")
+    print_and_log(f"Offset correction happens with subtitles above {ACCEPT_OFFSET_THRESHOLD:.3f}s offset, yet below {REJECT_OFFSET_THRESHOLD:.3f}s offset. (as per your .config settings)")
+    print_and_log("Let's manually verify these cases to ensure the subtitle text matches the audio well enough.")
     print_and_log("If the result is inadequate, then you can make manual adjustments using Subservient.\n")
     print_and_log(f"Subservient will attempt to automatically open the video for you, using your default media player.")
     print_and_log(f"Don't have a decent media player? You can install {Fore.LIGHTYELLOW_EX}VLC Media Player{Style.RESET_ALL} for free. \n")
@@ -1273,13 +1485,11 @@ def show_offset_verification_details():
             print_and_log("The video file should now have started. Please especially check for:")
             print_and_log("1. Sentences that are too early or too late compared to the audio.")
             print_and_log("2. Subtitles appearing correctly when actors are talking in a different language.\n")
-            print_and_log("The subtitles we're now manually checking are usually listed at the very bottom.\n")
         else:
             print_and_log("Please open the video file manually at the blue path, then check for the questions below:")
             print_and_log(f"{Fore.CYAN}{folder}{os.sep}{video}{Style.RESET_ALL}")
             print_and_log("1. Check for sentences that are too early or too late compared to the audio.")
             print_and_log("2. Check that subtitles appear correctly when actors are talking in a different language.\n")
-            print_and_log("The subtitles we're now manually checking are usually listed at the very bottom.")
         print()
         while True:
             lang_display = f"{Fore.LIGHTGREEN_EX}{lang.upper()}{Style.RESET_ALL}"
@@ -1385,6 +1595,11 @@ def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timest
                         else:
                             corr_col = Fore.LIGHTRED_EX
                             logs.append(f"{sync_tag()} {corr_col}Applied {ms} ms, making the subtitles appear earlier{Style.RESET_ALL}")
+                        
+                        # Update timestamp to reflect the change
+                        new_time, first_line = get_first_line_and_time(sub_path)
+                        if new_time:
+                            timestamp = f"{new_time} <i>- {first_line}</i>"
                     else:
                         logs.append(f"{sync_tag()} {Fore.LIGHTRED_EX}Unable to apply correction. {message} {Style.RESET_ALL}")
             except ValueError:
@@ -1404,6 +1619,11 @@ def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timest
                         net_change += ms_restore
                         offset_restored = True
                         logs.append(f"{sync_tag()} {Fore.YELLOW}Original offset restored..{Style.RESET_ALL}")
+                        
+                        # Update timestamp to reflect the restoration
+                        new_time, first_line = get_first_line_and_time(sub_path)
+                        if new_time:
+                            timestamp = f"{new_time} <i>- {first_line}</i>"
                     else:
                         logs.append(f"{sync_tag()} {Fore.LIGHTRED_EX}Failed to restore original offset: {message}{Style.RESET_ALL}")
         elif choice == "4":
@@ -1480,22 +1700,19 @@ print_and_log(f"\n{sync_tag()} {Fore.CYAN}Performing final cleanup...{Style.RESE
 final_cleanup_prompt_and_cleanup()
 
 print_and_log(f"\n{sync_tag()} {Fore.CYAN}Performing final subtitle coverage scan...{Style.RESET_ALL}")
-coverage_results = scan_subtitle_coverage(videos, LANGUAGES, show_progress=True, logger_func=print_and_log, sync_tag_func=sync_tag)
+coverage_results = scan_subtitle_coverage(videos, LANGUAGES, SERIES_MODE, show_progress=True, logger_func=print_and_log, sync_tag_func=sync_tag)
 display_coverage_results(coverage_results, LANGUAGES, banner_line=BANNER_LINE, return_to_menu=True, logger_func=print_and_log, sync_tag_func=sync_tag)
 
 clear_and_print_ascii(BANNER_LINE)
 print_and_log(f"\n{Style.BRIGHT}{Fore.GREEN}✓ Subservient run COMPLETE!{Style.RESET_ALL}\n")
 
-print_and_log(f"{Fore.LIGHTYELLOW_EX}Finishing touch:{Style.RESET_ALL}\nWant to rename internal subtitles, clean ads, promotional text, and unwanted content from your subtitles?")
-print_and_log(f"Check out the main menu → option {Fore.GREEN}5{Style.RESET_ALL} '{Fore.CYAN}Extra tools{Style.RESET_ALL}' for a final polish!\n")
-
-print_and_log(f"{Style.BRIGHT}Thank you so much for using Subservient!{Style.RESET_ALL}")
-print_and_log(f"I hope this tool has made managing your subtitle collection a bit easier.")
-print_and_log(f"If Subservient has been helpful to you, I'd be incredibly grateful for any support:")
+print_and_log(f"{Style.BRIGHT}Thank you so much for using Subservient!{Style.RESET_ALL}\n")
+print_and_log(f"I hope this tool has made managing your subtitle collection just a little bit easier.")
+print_and_log(f"If it did, then please consider supporting its development:")
 print_and_log(f"{Fore.CYAN}https://buymeacoffee.com/nexigen{Style.RESET_ALL}")
-print_and_log(f"\nEven the smallest contribution helps me keep improving this tool and provide")
-print_and_log(f"better support for the community. But please, only if you can spare it!")
-print_and_log(f"\n{Fore.GREEN}Thank you for being part of the Subservient community!{Style.RESET_ALL}")
+print_and_log(f"\nEven the smallest contribution helps me keep improving this tool and provide-")
+print_and_log(f"future updates for the community. But please, only if you can spare it!")
+print_and_log(f"\n{Fore.LIGHTMAGENTA_EX}Thank you for being part of the Subservient community!{Style.RESET_ALL}")
 
 print_and_log(f"\n{Fore.YELLOW}Press any key to exit...{Style.RESET_ALL}")
 input()

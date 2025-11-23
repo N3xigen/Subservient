@@ -347,15 +347,40 @@ def clean_title(raw_title: str) -> str:
 def check_existing_subtitles(mkv_path: Path) -> dict:
     """Check which subtitle languages already exist for video file."""
     base = mkv_path.with_suffix('')
-    return {
-        lang: (srt_file := base.with_name(f"{base.name}.{lang}.srt")).exists() 
-              and not get_subtitle_files_by_pattern(mkv_path.parent, lang, ".DRIFT")
-        for lang in LANGUAGES
-    }
+    result = {}
+    
+    for lang in LANGUAGES:
+        # Check standard naming: filename.lang.srt
+        standard_srt = base.with_name(f"{base.name}.{lang}.srt")
+        
+        # Check series naming if in series mode
+        series_srt = None
+        if SERIES_MODE:
+            sxxexx_code = extract_sxxexx_code(mkv_path.name)
+            if sxxexx_code:
+                # Check if video filename already contains the episode code
+                if sxxexx_code.lower() in base.name.lower():
+                    # Video already has SxxExx in name, subtitle should use standard naming
+                    series_srt = base.with_name(f"{base.name}.{lang}.srt")
+                else:
+                    # Video doesn't have SxxExx, subtitle should have SxxExx before language
+                    series_srt = base.with_name(f"{base.name}.{sxxexx_code}.{lang}.srt")
+        
+        # Check if we have any good subtitles (not DRIFT/FAILED)
+        has_standard = standard_srt.exists()
+        has_series = series_srt.exists() if series_srt else False
+        
+        # CRITICAL FIX: Only count as "complete" if we have a FINAL subtitle
+        # Having only DRIFT files means we need MORE downloads, not skip!
+        result[lang] = has_standard or has_series
+    
+    return result
+
 def extract_sxxexx_code(name: str) -> str | None:
     """Extract season/episode code from filename."""
     match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
     return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
+
 unknown_sxxexx_files = []
 def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, candidate_index=None, force_download=False):
     """Download the top-rated subtitles for specified language and video."""
@@ -532,6 +557,44 @@ def get_subtitle_files_by_pattern(folder: Path, lang: str, pattern_suffix: str =
 
 def count_existing_subtitles(movie_path: Path, lang: str) -> tuple[set, int]:
     existing_counts = set()
+    
+    # For series mode, only count episode-specific subtitles
+    if SERIES_MODE:
+        sxxexx_code = extract_sxxexx_code(movie_path.name)
+        if sxxexx_code:
+            # Count episode-specific candidates
+            episode_pattern = f"*.{lang}.number*.{sxxexx_code}.srt"
+            episode_drift_pattern = f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt"
+            episode_failed_pattern = f"*.{lang}.number*.{sxxexx_code}.FAILED.srt"
+            
+            episode_files = list(movie_path.parent.glob(episode_pattern))
+            episode_drift_files = list(movie_path.parent.glob(episode_drift_pattern))
+            episode_failed_files = list(movie_path.parent.glob(episode_failed_pattern))
+            
+            # Extract existing download counts for this episode
+            for f in episode_files:
+                if f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'):
+                    continue
+                m = re.match(rf"^(\d+)\.{re.escape(lang)}\.number\d+\.{re.escape(sxxexx_code)}\.srt$", f.name)
+                if m:
+                    existing_counts.add(int(m.group(1)))
+            
+            for f in episode_drift_files:
+                m = re.match(rf"^(\d+)\.{re.escape(lang)}\.number\d+\.{re.escape(sxxexx_code)}\.DRIFT\.srt$", f.name)
+                if m:
+                    existing_counts.add(int(m.group(1)))
+                    
+            for f in episode_failed_files:
+                m = re.match(rf"^(\d+)\.{re.escape(lang)}\.number\d+\.{re.escape(sxxexx_code)}\.FAILED\.srt$", f.name)
+                if m:
+                    existing_counts.add(int(m.group(1)))
+            
+            # Count total for this episode only
+            normal_count = len([f for f in episode_files if not (f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'))])
+            total_existing = normal_count + len(episode_drift_files) + len(episode_failed_files)
+            return existing_counts, total_existing
+    
+    # Original movie logic for non-series mode
     for f in get_subtitle_files_by_pattern(movie_path.parent, lang):
         if f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'):
             continue
@@ -556,6 +619,26 @@ def count_existing_subtitles(movie_path: Path, lang: str) -> tuple[set, int]:
     return existing_counts, total_existing
 
 def build_search_query(raw_title: str) -> str:
+    # For series mode, truncate everything after SxxExx pattern
+    if SERIES_MODE:
+        series_match = re.search(r'([sS](\d{1,2})[eE](\d{1,2}))', raw_title)
+        if series_match:
+            # Find the end of the SxxExx pattern
+            series_end_pos = series_match.end()
+            # Keep everything up to and including SxxExx, remove everything after
+            truncated_title = raw_title[:series_end_pos]
+            
+            # Simple cleaning for series: only remove brackets and their contents
+            # Example: [TorrentCouch.com].13.Reasons.Why.S02E04 -> .13.Reasons.Why.S02E04
+            cleaned = re.sub(r'\[[^\]]*\]', '', truncated_title)
+            # Replace dots with spaces and clean up
+            cleaned = cleaned.replace('.', ' ')
+            # Clean up multiple spaces
+            cleaned = re.sub(r'\s+', ' ', cleaned)
+            
+            return cleaned.strip()
+    
+    # Original movie logic for non-series mode
     year_match = re.search(r'(19|20)\d{2}', raw_title)
     if year_match:
         year = year_match.group(0)
@@ -611,26 +694,84 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             print_and_log(f"{acq_tag()} {Fore.MAGENTA}Skipping {lang.upper()}: language indefinitely skipped for this movie!{Style.RESET_ALL}")
             skip_langs.add(lang)
     base = movie_path.with_suffix("")
+    # Use episode-specific checking for series mode
     missing_langs = []
     drift_langs = {}
     for lang in LANGUAGES:
         if lang in skip_langs:
             continue
+            
+        # Check for episode-specific subtitle files
+        base = movie_path.with_suffix("")
+        
+        # Standard naming: filename.lang.srt
         normal = base.with_name(f"{base.name}.{lang}.srt")
-        all_srt_files = get_subtitle_files_by_pattern(movie_path.parent, lang)
-        sync = [f for f in all_srt_files if not (f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'))]
-        drift = get_subtitle_files_by_pattern(movie_path.parent, lang, ".DRIFT")
-        if drift:
-            drift_langs[lang] = drift
-        if not normal.exists() and not sync and not drift:
+        
+        # Series naming
+        series_srt = None
+        if SERIES_MODE:
+            sxxexx_code = extract_sxxexx_code(movie_path.name)
+            if sxxexx_code:
+                # Check if video filename already contains the episode code
+                if sxxexx_code.lower() in base.name.lower():
+                    # Video already has SxxExx in name, subtitle should use standard naming
+                    series_srt = base.with_name(f"{base.name}.{lang}.srt")
+                else:
+                    # Video doesn't have SxxExx, subtitle should have SxxExx before language
+                    series_srt = base.with_name(f"{base.name}.{sxxexx_code}.{lang}.srt")
+        
+        # Check for episode-specific candidate files (downloaded but not yet finalized)
+        episode_specific_candidates = []
+        if SERIES_MODE and sxxexx_code:
+            episode_specific_candidates = list(movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.srt"))
+        else:
+            episode_specific_candidates = list(movie_path.parent.glob(f"*.{lang}.number*.srt"))
+        
+        # Filter out DRIFT and FAILED files
+        sync = [f for f in episode_specific_candidates if not (f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'))]
+        
+        # Check for DRIFT files with series-awareness
+        if SERIES_MODE:
+            sxxexx_code = extract_sxxexx_code(movie_path.name)
+            if sxxexx_code:
+                drift_files = list(movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt"))
+            else:
+                drift_files = list(movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+        else:
+            drift_files = list(movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+        
+        if drift_files:
+            drift_langs[lang] = drift_files
+        
+        # Language has subtitles if either standard or series file exists, or valid candidates exist
+        has_subtitles = normal.exists() or (series_srt and series_srt.exists()) or sync
+        
+        if not has_subtitles and not drift_files:
             missing_langs.append(lang)
     if drift_langs:
         def process_drift_batch(top_results, drift_files, lang, used_fallback):
             drift_numbers = set()
-            for f in drift_files:
-                m = re.search(rf"\.{lang}\.number(\d+)\.DRIFT\.srt$", f.name)
-                if m:
-                    drift_numbers.add(int(m.group(1)))
+            # Use series-aware DRIFT detection
+            if SERIES_MODE:
+                sxxexx_code = extract_sxxexx_code(movie_path.name)
+                if sxxexx_code:
+                    # Series mode: look for episode-specific DRIFT files
+                    for f in drift_files:
+                        m = re.search(rf"\.{re.escape(lang)}\.number(\d+)\.{re.escape(sxxexx_code)}\.DRIFT\.srt$", f.name)
+                        if m:
+                            drift_numbers.add(int(m.group(1)))
+                else:
+                    # Fallback to standard pattern if no SxxExx found
+                    for f in drift_files:
+                        m = re.search(rf"\.{lang}\.number(\d+)\.DRIFT\.srt$", f.name)
+                        if m:
+                            drift_numbers.add(int(m.group(1)))
+            else:
+                # Movie mode: use standard pattern
+                for f in drift_files:
+                    m = re.search(rf"\.{lang}\.number(\d+)\.DRIFT\.srt$", f.name)
+                    if m:
+                        drift_numbers.add(int(m.group(1)))
             drift_numbers = sorted(drift_numbers)
             available_count = len(top_results)
             all_indices = set(range(1, available_count + 1))
@@ -675,8 +816,19 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                     if genuinely_new:
                         all_srt_files = list(movie_path.parent.glob(f"*.{lang}.number*.srt"))
                         existing_downloads = len([f for f in all_srt_files if not (f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'))])
-                        existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
-                        existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
+                        
+                        # Count DRIFT/FAILED files with series-awareness
+                        if SERIES_MODE:
+                            sxxexx_code = extract_sxxexx_code(movie_path.name)
+                            if sxxexx_code:
+                                existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt"))
+                                existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.FAILED.srt"))
+                            else:
+                                existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+                                existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
+                        else:
+                            existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+                            existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
                         total_downloaded = existing_downloads + existing_drifts + existing_failed
                         if total_downloaded >= MAX_SEARCH_RESULTS:
                             print_and_log(f"{acq_tag()} {Fore.YELLOW}MAX_SEARCH_RESULTS limit ({MAX_SEARCH_RESULTS}) reached for {lang.upper()}. Forcing to last resort.{Style.RESET_ALL}")
@@ -687,10 +839,27 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                             print_and_log(f"{acq_tag()} {Fore.YELLOW}Broader search found {len(candidates_to_download)} genuinely new candidates for {lang.upper()}. (Downloaded: {total_downloaded}/{MAX_SEARCH_RESULTS}){Style.RESET_ALL}")
                             print_subtitle_list(candidates_to_download, lang, color=Fore.LIGHTYELLOW_EX)
                             drift_indices = []
-                            for f in drift_files:
-                                m = re.search(rf"\.number(\d+)\.DRIFT\.srt$", f.name)
-                                if m:
-                                    drift_indices.append(int(m.group(1)))
+                            # Use series-aware DRIFT detection
+                            if SERIES_MODE:
+                                sxxexx_code = extract_sxxexx_code(movie_path.name) 
+                                if sxxexx_code:
+                                    # Series mode: look for episode-specific DRIFT files
+                                    for f in drift_files:
+                                        m = re.search(rf"\.{re.escape(lang)}\.number(\d+)\.{re.escape(sxxexx_code)}\.DRIFT\.srt$", f.name)
+                                        if m:
+                                            drift_indices.append(int(m.group(1)))
+                                else:
+                                    # Fallback to standard pattern if no SxxExx found
+                                    for f in drift_files:
+                                        m = re.search(rf"\.number(\d+)\.DRIFT\.srt$", f.name)
+                                        if m:
+                                            drift_indices.append(int(m.group(1)))
+                            else:
+                                # Movie mode: use standard pattern
+                                for f in drift_files:
+                                    m = re.search(rf"\.number(\d+)\.DRIFT\.srt$", f.name)
+                                    if m:
+                                        drift_indices.append(int(m.group(1)))
                             start_index = max(drift_indices) + 1 if drift_indices else 1
                             
                             for i, candidate in enumerate(candidates_to_download, start=start_index):
@@ -720,8 +889,19 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                             candidate_file_name = candidate['attributes']['files'][0]['file_name']
                             cand_downloads = candidate['attributes'].get('download_count', 0)
                             srt_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".srt") and not (f.name.endswith(".DRIFT.srt") or f.name.endswith(".FAILED.srt")) for f in movie_path.parent.glob(f"*.{lang}.number*.srt"))
-                            drift_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".DRIFT.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
-                            failed_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".FAILED.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
+                            
+                            # Check DRIFT/FAILED with series-awareness
+                            if SERIES_MODE:
+                                sxxexx_code = extract_sxxexx_code(movie_path.name)
+                                if sxxexx_code:
+                                    drift_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".DRIFT.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt"))
+                                    failed_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".FAILED.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.FAILED.srt"))
+                                else:
+                                    drift_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".DRIFT.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+                                    failed_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".FAILED.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
+                            else:
+                                drift_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".DRIFT.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+                                failed_exists = any(f.name.startswith(f"{cand_downloads}.{lang}.") and f.name.endswith(".FAILED.srt") for f in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
                             if srt_exists or drift_exists or failed_exists:
                                 print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}Skipping LASTRESORT candidate index {i}: already present as .srt, .DRIFT.srt, or .FAILED.srt.{Style.RESET_ALL}", Fore.YELLOW)
                                 continue
@@ -751,8 +931,19 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 return
             all_srt_files = list(movie_path.parent.glob(f"*.{lang}.number*.srt"))
             existing_downloads = len([f for f in all_srt_files if not (f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'))])
-            existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
-            existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
+            
+            # Count DRIFT/FAILED files with series-awareness  
+            if SERIES_MODE:
+                sxxexx_code = extract_sxxexx_code(movie_path.name)
+                if sxxexx_code:
+                    existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt"))
+                    existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.FAILED.srt"))
+                else:
+                    existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+                    existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
+            else:
+                existing_drifts = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.DRIFT.srt"))
+                existing_failed = sum(1 for _ in movie_path.parent.glob(f"*.{lang}.number*.FAILED.srt"))
             total_downloaded = existing_downloads + existing_drifts + existing_failed
             if total_downloaded >= MAX_SEARCH_RESULTS:
                 print_and_log(f"{acq_tag()} {Fore.YELLOW}MAX_SEARCH_RESULTS limit ({MAX_SEARCH_RESULTS}) reached for {lang.upper()}. Skipping to broader search.{Style.RESET_ALL}")
@@ -868,7 +1059,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             print_and_log(header)
             print_subtitle_list(top_results, lang, color=Fore.LIGHTBLUE_EX)
             if top_results:
-                start_index = get_next_sub_index(movie_path.parent, lang)
+                start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                 for i, candidate in enumerate(top_results[:TOP_DOWNLOADS], start=start_index):
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
                 continue
@@ -886,7 +1077,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             print_and_log(f"\n{acq_tag()} Top {len(top_unfiltered)} subtitles UNFILTERED ({lang.upper()}):")
             print_subtitle_list(top_unfiltered, lang, color=Fore.LIGHTBLUE_EX)
             if top_unfiltered:
-                start_index = get_next_sub_index(movie_path.parent, lang)
+                start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                 for i, candidate in enumerate(top_unfiltered[:TOP_DOWNLOADS], start=start_index):
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
                 continue
@@ -911,7 +1102,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 print_and_log(f"\n{acq_tag()} Top {len(top_fallback)} subtitles (clean_title, UNFILTERED, {lang.upper()}):")
                 print_subtitle_list(top_fallback, lang, color=Fore.LIGHTRED_EX)
                 if top_fallback:
-                    start_index = get_next_sub_index(movie_path.parent, lang)
+                    start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                     for i, candidate in enumerate(top_fallback[:TOP_DOWNLOADS], start=start_index):
                         download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
                     continue
@@ -953,7 +1144,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             print_and_log(f"\n{acq_tag()} Top {len(top_results)} subtitles ({lang.upper()}):")
             print_subtitle_list(top_results, lang, color=Fore.LIGHTBLUE_EX)
             if top_results:
-                start_index = get_next_sub_index(movie_path.parent, lang)
+                start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                 for i, candidate in enumerate(top_results[:TOP_DOWNLOADS], start=start_index):
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
         elif response.status_code == 401:
@@ -1176,7 +1367,7 @@ def handle_missing_queries():
                     if not indices:
                         print_and_log(f"{acq_tag()} Invalid choice. Please enter valid number(s) or press Enter to return.")
                         continue
-                    next_index = get_next_sub_index(mkv_path.parent, search_lang)
+                    next_index = get_next_sub_index(mkv_path.parent, search_lang, mkv_path)
                     for idx_to_download in indices:
                         download_top_subtitles(
                             [top_results[idx_to_download-1]],
@@ -1332,18 +1523,11 @@ def process_folder(folder: Path, scanned_folders: set, jwt_token: str, skipped_m
         if total_videos is not None:
             clear_and_print_ascii(BANNER_LINE)
             print_video_header(video_file.stem, idx_offset + i, total_videos)
-        base = video_file.with_suffix("")
-        lang_status = {}
-        drift_detected = False
-        for lang in LANGUAGES:
-            normal = base.with_name(f"{base.name}.{lang}.srt")
-            all_srt_files = list(folder.glob(f"*.{lang}.number*.srt"))
-            sync = [f for f in all_srt_files if not (f.name.endswith('.DRIFT.srt') or f.name.endswith('.FAILED.srt'))]
-            drift = any(folder.glob(f"*.{lang}.number*.DRIFT.srt"))
-            if drift:
-                drift_detected = True
-            lang_status[lang] = (normal.exists() or sync) and not drift
-        if all(lang_status.values()) and not drift_detected:
+            
+        # Use the proper check_existing_subtitles function that handles both standard and series naming
+        lang_status = check_existing_subtitles(video_file)
+        
+        if all(lang_status.values()):
             print_and_log(f"{acq_tag()} * All subtitles present or in sync. Skipping {video_file.name}.")
             continue
         scanned_folders.add(folder)
@@ -1383,10 +1567,37 @@ def ensure_initial_setup():
         exit_with_prompt("Press Enter to exit...")
 ensure_initial_setup()
 
-def get_next_sub_index(folder: Path, lang: str) -> int:
-    pattern = f"*.{lang}.number*.srt"
+def get_next_sub_index(folder: Path, lang: str, mkv_path: Path = None) -> int:
+    # For series mode, only look at episode-specific files
+    if SERIES_MODE and mkv_path:
+        sxxexx_code = extract_sxxexx_code(mkv_path.name)
+        if sxxexx_code:
+            # Count ALL files for this specific episode: normal, DRIFT, and FAILED
+            indices = []
+            
+            # Pattern for all episode-specific files
+            all_files = list(folder.glob(f"*.{lang}.number*.{sxxexx_code}.srt")) + \
+                       list(folder.glob(f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt")) + \
+                       list(folder.glob(f"*.{lang}.number*.{sxxexx_code}.FAILED.srt"))
+            
+            for f in all_files:
+                # Extract number from any of these patterns:
+                # {id}.{lang}.number{X}.{sxxexx_code}.srt
+                # {id}.{lang}.number{X}.{sxxexx_code}.DRIFT.srt  
+                # {id}.{lang}.number{X}.{sxxexx_code}.FAILED.srt
+                m = re.search(rf"\.{re.escape(lang)}\.number(\d+)\.{re.escape(sxxexx_code)}\.(srt|DRIFT\.srt|FAILED\.srt)$", f.name)
+                if m:
+                    indices.append(int(m.group(1)))
+                    
+            return max(indices, default=0) + 1
+    
+    # Original movie logic - count all files in folder (including DRIFT/FAILED)
+    pattern_files = list(folder.glob(f"*.{lang}.number*.srt")) + \
+                   list(folder.glob(f"*.{lang}.number*.DRIFT.srt")) + \
+                   list(folder.glob(f"*.{lang}.number*.FAILED.srt"))
+    
     indices = []
-    for f in folder.glob(pattern):
+    for f in pattern_files:
         m = re.search(rf"\.{lang}\.number(\d+)", f.name)
         if m:
             indices.append(int(m.group(1)))

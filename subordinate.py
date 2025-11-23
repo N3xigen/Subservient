@@ -291,20 +291,24 @@ def print_subservient_checklist():
         series_info = utils.detect_series_structure(local_path)
         
         if direct_videos:
-            processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
+            # In series mode, multiple video files = multiple file processing
+            # Single video file = single file processing
+            if len(direct_videos) > 1:
+                processing_type = f"{Fore.CYAN}Multiple file processing{Style.RESET_ALL}"
+            else:
+                processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
             folder_count_display = f"{Fore.GREEN}1{Style.RESET_ALL}"
         else:
             if series_info['series_detected']:
-                if series_info['series_type'] == 'single':
-                    processing_type = f"{Fore.CYAN}Single TV series{Style.RESET_ALL}"
-                else:
-                    processing_type = f"{Fore.CYAN}Multiple TV series{Style.RESET_ALL}"
+                # In series mode, always show batch processing regardless of series count
+                processing_type = f"{Fore.CYAN}Batch processing{Style.RESET_ALL}"
                 folder_count_display = f"{Fore.GREEN}{series_info['folder_analysis']['video_folders']}{Style.RESET_ALL}"
             else:
                 processing_type = f"{Fore.CYAN}Batch processing{Style.RESET_ALL}"
                 folder_count_display = f"{Fore.RED}0{Style.RESET_ALL}"
     else:
         if direct_videos:
+            # In movie mode, direct videos = single file processing (even if multiple movies)
             processing_type = f"{Fore.CYAN}Single file processing{Style.RESET_ALL}"
             folder_count_display = f"{Fore.GREEN}1{Style.RESET_ALL}"
         else:
@@ -336,76 +340,50 @@ def print_subservient_checklist():
                     else f"{Fore.RED}N/A{Style.RESET_ALL}")
     
     print_and_log(f"{Style.BRIGHT}{Fore.BLUE}  [ Subservient Pre-Flight Checklist ]{Style.RESET_ALL}\n")
-    print_and_log(f"  {Fore.WHITE}Location:{Style.RESET_ALL}         {Fore.LIGHTYELLOW_EX}{short_path}{Style.RESET_ALL}")
-    print_and_log(f"  {Fore.WHITE}Mode:{Style.RESET_ALL}             {mode}")
-    print_and_log(f"  {Fore.WHITE}Processing type:{Style.RESET_ALL}  {processing_type}")
     
     if is_series_mode:
-        if not direct_videos and 'series_info' in locals():
-            if series_info['series_names']:
-                series_count = len(series_info['series_names'])
-                print_and_log(f"  {Fore.WHITE}Detected series:{Style.RESET_ALL}     {Fore.LIGHTCYAN_EX}{series_count}{Style.RESET_ALL}")
-        
         # Check for potential movies in series mode
         potential_movie_info = utils.detect_potential_movies_in_series_mode(local_path, config_path)
-        if potential_movie_info['has_potential_movies']:
-            print_and_log(f"  {Fore.RED}❌ ERROR: Movie content detected in series mode!{Style.RESET_ALL}")
-            print_and_log(f"      {Fore.YELLOW}Found {potential_movie_info['potential_movie_count']} folder(s) with movie-like content{Style.RESET_ALL}")
-            for folder_info in potential_movie_info['potential_movie_folders'][:3]:  # Show max 3 examples
-                if folder_info['video_count'] == 1:
-                    print_and_log(f"      {Fore.LIGHTRED_EX}• {folder_info['relative_path']} (1 video, no series naming){Style.RESET_ALL}")
-                else:
-                    print_and_log(f"      {Fore.LIGHTRED_EX}• {folder_info['relative_path']} ({folder_info['video_count']} videos, no series naming){Style.RESET_ALL}")
-            if potential_movie_info['potential_movie_count'] > 3:
-                remaining = potential_movie_info['potential_movie_count'] - 3
-                print_and_log(f"      {Fore.LIGHTBLACK_EX}... and {remaining} more folder(s){Style.RESET_ALL}")
-            print_and_log(f"      {Fore.WHITE}Series mode requires series-like folder and file naming!{Style.RESET_ALL}")
-        
         has_series_warning = potential_movie_info['has_potential_movies']
     else:
-        print_and_log(f"  {Fore.WHITE}Maps found:{Style.RESET_ALL}       {folder_count_display}")
-        
         # Check for potential series in video mode
         potential_series_info = utils.detect_potential_series_in_video_mode(local_path, config_path)
-        if potential_series_info['has_potential_series']:
-            print_and_log(f"  {Fore.RED}❌ ERROR: TV Series detected in video mode!{Style.RESET_ALL}")
-            print_and_log(f"      {Fore.YELLOW}Found {potential_series_info['potential_series_count']} folder(s) with 3+ videos (likely series){Style.RESET_ALL}")
-            for folder_info in potential_series_info['potential_series_folders'][:3]:  # Show max 3 examples
-                print_and_log(f"      {Fore.LIGHTRED_EX}• {folder_info['relative_path']} ({folder_info['video_count']} videos){Style.RESET_ALL}")
-            if potential_series_info['potential_series_count'] > 3:
-                remaining = potential_series_info['potential_series_count'] - 3
-                print_and_log(f"      {Fore.LIGHTBLACK_EX}... and {remaining} more folder(s){Style.RESET_ALL}")
-            print_and_log(f"      {Fore.WHITE}Video mode requires a series-free environment!{Style.RESET_ALL}")
-        
-        # Store potential series info for later use
         has_series_warning = potential_series_info['has_potential_series']
     
-    subtitle_langs = config.get('languages', None)
-    audio_langs = config.get('audio_track_languages', None)
-    print_and_log(f"  {Fore.WHITE}Subtitle languages to find:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{subtitle_langs if subtitle_langs else 'N/A'}{Style.RESET_ALL}")
-    print_and_log(f"  {Fore.WHITE}Audio track languages to keep:{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}{audio_langs if audio_langs else 'N/A'}{Style.RESET_ALL}")
-    print_and_log(f"  {Fore.WHITE}Subtitle downloads per batch:{Style.RESET_ALL} {subtitle_downloads}")
-    print_and_log(f"  {Fore.WHITE}Extra video handling:{Style.RESET_ALL}   {delete_status}")
-    print_and_log(f"  {Fore.WHITE}Subtitle delay threshold:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{threshold_str}{Style.RESET_ALL}")
+    # Only show detailed info if there are NO warnings
+    if not has_series_warning:
+        print_and_log(f"  {Fore.WHITE}Location:{Style.RESET_ALL}         {Fore.LIGHTYELLOW_EX}{short_path}{Style.RESET_ALL}")
+        print_and_log(f"  {Fore.WHITE}Mode:{Style.RESET_ALL}             {mode}")
+        print_and_log(f"  {Fore.WHITE}Processing type:{Style.RESET_ALL}  {processing_type}")
+        
+        # Only show "Maps found" in movie mode, not in series mode
+        if not is_series_mode:
+            print_and_log(f"  {Fore.WHITE}Maps found:{Style.RESET_ALL}       {folder_count_display}")
+        
+        subtitle_langs = config.get('languages', None)
+        audio_langs = config.get('audio_track_languages', None)
+        print_and_log(f"  {Fore.WHITE}Subtitle languages to find:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{subtitle_langs if subtitle_langs else 'N/A'}{Style.RESET_ALL}")
+        print_and_log(f"  {Fore.WHITE}Audio track languages to keep:{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}{audio_langs if audio_langs else 'N/A'}{Style.RESET_ALL}")
+        print_and_log(f"  {Fore.WHITE}Subtitle downloads per batch:{Style.RESET_ALL} {subtitle_downloads}")
+        print_and_log(f"  {Fore.WHITE}Extra video handling:{Style.RESET_ALL}   {delete_status}")
+        print_and_log(f"  {Fore.WHITE}Subtitle delay threshold:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{threshold_str}{Style.RESET_ALL}")
     
     # Show appropriate menu based on whether there are warnings
     if has_series_warning:
         if is_series_mode:
-            print_and_log(f"\n{Fore.RED}⚠️  CANNOT START - MOVIE CONTENT DETECTED IN SERIES MODE{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.YELLOW}Found folders with single videos or non-series naming{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.WHITE}In series mode, all content must follow series naming conventions{Style.RESET_ALL}")
-            print_and_log(f"\n     {Fore.WHITE}Please fix this by:{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.CYAN}• Moving all individual movies to a completely separate location{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.CYAN}• Using proper season/episode naming (S01E01, 1x01, etc.){Style.RESET_ALL}")
-            print_and_log(f"     {Fore.CYAN}• OR set series_mode=false if this location is for movies only{Style.RESET_ALL}")
+            print_and_log(f"{Fore.RED}⚠️  CANNOT START - MISSING SxxExx NAMING IN SERIES MODE{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.YELLOW}Found videos without proper SxxExx codes (e.g. S01E01, S02E05){Style.RESET_ALL}")
+            print_and_log(f"     {Fore.WHITE}All videos must have SxxExx naming for episode detection{Style.RESET_ALL}")
+            print_and_log(f"\n     {Fore.WHITE}Fix by:{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Adding SxxExx codes to ALL video filenames{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• OR moving movies to separate location{Style.RESET_ALL}")
         else:
-            print_and_log(f"\n{Fore.RED}⚠️  CANNOT START - SERIES DETECTED IN VIDEO MODE{Style.RESET_ALL}")
+            print_and_log(f"\n{Fore.RED}⚠️  CANNOT START - SERIES DETECTED IN MOVIE MODE{Style.RESET_ALL}")
             print_and_log(f"     {Fore.YELLOW}Found folders with 3+ videos that appear to be TV series{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.WHITE}In video mode, series content is NOT allowed in the scan area{Style.RESET_ALL}")
-            print_and_log(f"\n     {Fore.WHITE}Please fix this by:{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.CYAN}• Moving all TV series to a completely separate location{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.CYAN}• Only keep individual movie files in this scan area{Style.RESET_ALL}")
-            print_and_log(f"     {Fore.CYAN}• OR set series_mode=true if this location is for TV series only{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.WHITE}In movie mode, series content is NOT allowed in the scan area{Style.RESET_ALL}")
+            print_and_log(f"\n     {Fore.WHITE}Please go through this check:{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Are you trying to process TV series? -> set series_mode=true{Style.RESET_ALL}")
+            print_and_log(f"     {Fore.CYAN}• Are you trying to process Movies? -> Make sure there are no multiple video files in folders{Style.RESET_ALL}")
         
         print_and_log(f"\n     {Fore.LIGHTRED_EX}Series and movies cannot be processed together!{Style.RESET_ALL}")
         print_and_log(f"\n{Fore.RED}  1{Style.RESET_ALL} = Exit to fix configuration")
@@ -1299,6 +1277,45 @@ def main():
                             print_full_main_menu()
                             continue
                         
+                        # Series naming validation check
+                        if config.get('series_mode', False):
+                            # Define paths needed for validation
+                            local_path = Path(__file__).parent.resolve()
+                            config_path = local_path / '.config'
+                            
+                            naming_validation = utils.validate_series_naming(local_path, config_path)
+                            if naming_validation['validation_needed'] and naming_validation['has_issues']:
+                                # Show naming issues error
+                                utils.clear_and_print_ascii(BANNER_LINE)
+                                print_and_log(f"{Style.BRIGHT}{Fore.BLUE}  [ Subservient Pre-Flight Checklist ]{Style.RESET_ALL}\n")
+                                
+                                print_and_log(f"{Fore.RED}⚠️  CANNOT START - SERIES NAMING ISSUES DETECTED{Style.RESET_ALL}")
+                                print_and_log(f"     {Fore.YELLOW}Found {len(naming_validation['problematic_files'])} video file(s) without proper season/episode naming{Style.RESET_ALL}")
+                                print_and_log(f"     {Fore.WHITE}All series videos must have SxxExx format (e.g., S01E01, S02E15, etc.){Style.RESET_ALL}")
+                                
+                                print_and_log(f"\n     {Fore.WHITE}Problematic files:{Style.RESET_ALL}")
+                                for file_info in naming_validation['problematic_files'][:10]:  # Show max 10
+                                    print_and_log(f"     {Fore.LIGHTRED_EX}• {file_info['path']}{Style.RESET_ALL}")
+                                
+                                if len(naming_validation['problematic_files']) > 10:
+                                    remaining = len(naming_validation['problematic_files']) - 10
+                                    print_and_log(f"     {Fore.LIGHTBLACK_EX}... and {remaining} more file(s){Style.RESET_ALL}")
+                                
+                                print_and_log(f"\n     {Fore.WHITE}Please fix this by:{Style.RESET_ALL}")
+                                print_and_log(f"     {Fore.CYAN}• Renaming files to include season and episode numbers (S01E01, S02E15, etc.){Style.RESET_ALL}")
+                                print_and_log(f"     {Fore.CYAN}• Using format SxxExx where xx is 2-digit season/episode (S01E01, not S1E1){Style.RESET_ALL}")
+                                print_and_log(f"     {Fore.CYAN}• Ensuring all episodes in a series follow the same naming pattern{Style.RESET_ALL}")
+                                
+                                print_and_log(f"\n     {Fore.LIGHTRED_EX}Series processing requires consistent episode naming!{Style.RESET_ALL}")
+                                print_and_log(f"\n{Fore.RED}  1{Style.RESET_ALL} = Exit to fix naming")
+                                
+                                naming_choice = input(f"\nPress [1] to exit: ").strip()
+                                if naming_choice == "1":
+                                    print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting due to series naming issues.")
+                                    print_and_log(f"{Fore.YELLOW}Required action: Rename video files to include proper SxxExx episode numbering.{Style.RESET_ALL}")
+                                    print_and_log(f"{Fore.WHITE}Example: 'Episode 1.mkv' → 'Show Name S01E01.mkv'{Style.RESET_ALL}")
+                                return
+                        
                         from platformdirs import user_config_dir
                         config_dir = Path(user_config_dir()) / "Subservient"
                         pathfile = config_dir / "Subservient_pathfiles"
@@ -1460,19 +1477,24 @@ def run_subtitle_coverage_scan():
                         break
         
         languages = ['en']
+        series_mode = False
         config_path1 = anchor_path / '.config'
         if config_path1.exists():
             languages = utils.get_languages_from_config(config_path1)
+            series_mode = utils.get_series_mode_from_config(config_path1)
         else:
             try:
                 subservient_folder = utils.get_subservient_folder()
                 config_path2 = subservient_folder / '.config'
                 if config_path2.exists():
                     languages = utils.get_languages_from_config(config_path2)
+                    series_mode = utils.get_series_mode_from_config(config_path2)
                 else:
                     languages = utils.get_languages_from_config(None)
+                    series_mode = utils.get_series_mode_from_config(None)
             except Exception:
                 languages = ['en']
+                series_mode = False
         
         videos = utils.find_videos_in_directory(current_dir)
         if not videos:
@@ -1481,7 +1503,7 @@ def run_subtitle_coverage_scan():
             input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
             return
         
-        coverage_results = utils.scan_subtitle_coverage(videos, languages, show_progress=True)
+        coverage_results = utils.scan_subtitle_coverage(videos, languages, series_mode, show_progress=True)
         utils.display_coverage_results(coverage_results, languages, scan_banner, return_to_menu=True)
         
     except Exception as e:

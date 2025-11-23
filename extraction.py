@@ -333,6 +333,8 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     """Extract internal subtitles from video file and clean up temporary files."""
     extracted_files = []
     deleted_files = []
+    forced_vobsub_to_remove = []  # Initialize early to avoid UnboundLocalError
+    
     if file_path.stat().st_size < 50 * 1024 * 1024:
         print_and_log(f"{ext_tag()} {Fore.YELLOW}Skipped (file too small < 50MB): {shortname(file_path)}{Style.RESET_ALL}")
         return
@@ -345,8 +347,27 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     base_name = file_path.stem
     parent_dir = file_path.parent
     base_path = parent_dir / base_name
-    has_lang = {lang: (parent_dir / f"{base_name}.{lang}.srt").exists() for lang in WANTED_LANGUAGES}
     sxxexx_code = extract_sxxexx_code(file_path.name) if SERIES_MODE else None
+    
+    # Check if subtitles already exist (both standard and series naming)
+    has_lang = {}
+    for lang in WANTED_LANGUAGES:
+        # Check standard naming: filename.lang.srt
+        standard_srt = parent_dir / f"{base_name}.{lang}.srt"
+        
+        # Check series naming if in series mode
+        series_srt = None
+        if SERIES_MODE and sxxexx_code:
+            # Check if video filename already contains the episode code
+            if sxxexx_code.lower() in base_name.lower():
+                # Video already has SxxExx in name, subtitle should use standard naming
+                series_srt = parent_dir / f"{base_name}.{lang}.srt"
+            else:
+                # Video doesn't have SxxExx, subtitle should have SxxExx before language
+                series_srt = parent_dir / f"{base_name}.{sxxexx_code}.{lang}.srt"
+        
+        # Language exists if either standard or series file exists
+        has_lang[lang] = standard_srt.exists() or (series_srt and series_srt.exists())
 
     try:
         info_cmd_json = ['mkvmerge', '-J', str(file_path)]
@@ -399,9 +420,27 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             subtitle_tracks = [t for t in mkv_info.get('tracks', []) if t.get('type') == 'subtitles']
             vobsub_per_lang = {lang: [] for lang in WANTED_LANGUAGES}
             vobsub_forced_per_lang = {lang: [] for lang in WANTED_LANGUAGES}
-            srt_found_per_lang = {lang: (parent_dir / f"{base_name}.{lang}.srt").exists() or 
-                                         (PRESERVE_FORCED_SUBTITLES and (parent_dir / f"{base_name}.{lang}.forced.srt").exists()) 
-                                  for lang in WANTED_LANGUAGES}
+            srt_found_per_lang = {}
+            for lang in WANTED_LANGUAGES:
+                # Check standard naming: filename.lang.srt
+                standard_exists = (parent_dir / f"{base_name}.{lang}.srt").exists()
+                forced_exists = PRESERVE_FORCED_SUBTITLES and (parent_dir / f"{base_name}.{lang}.forced.srt").exists()
+                
+                # Check series naming if in series mode
+                series_exists = False
+                series_forced_exists = False
+                if SERIES_MODE and sxxexx_code:
+                    # Check if video filename already contains the episode code
+                    if sxxexx_code.lower() in base_name.lower():
+                        # Video already has SxxExx in name, subtitle uses standard naming
+                        series_exists = (parent_dir / f"{base_name}.{lang}.srt").exists()
+                        series_forced_exists = PRESERVE_FORCED_SUBTITLES and (parent_dir / f"{base_name}.{lang}.forced.srt").exists()
+                    else:
+                        # Video doesn't have SxxExx, subtitle has SxxExx before language
+                        series_exists = (parent_dir / f"{base_name}.{sxxexx_code}.{lang}.srt").exists()
+                        series_forced_exists = PRESERVE_FORCED_SUBTITLES and (parent_dir / f"{base_name}.{sxxexx_code}.{lang}.forced.srt").exists()
+                
+                srt_found_per_lang[lang] = standard_exists or forced_exists or series_exists or series_forced_exists
             unwanted_bitmap_count = 0
             forced_vobsub_to_remove = []
             forced_text_subtitles = []
@@ -553,10 +592,19 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                     break
             
             if SERIES_MODE:
-                if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
-                    new_path = parent_dir / f"{base_name}.{detected}.forced.{sxxexx_code}.srt"
+                # Check if video filename already contains the episode code
+                if sxxexx_code and sxxexx_code.lower() in base_name.lower():
+                    # Video already has SxxExx in name, use standard naming
+                    if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
+                        new_path = parent_dir / f"{base_name}.{detected}.forced.srt"
+                    else:
+                        new_path = parent_dir / f"{base_name}.{detected}.srt"
                 else:
-                    new_path = parent_dir / f"{base_name}.{detected}.{sxxexx_code}.srt"
+                    # Video doesn't have SxxExx, add it before language
+                    if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
+                        new_path = parent_dir / f"{base_name}.{sxxexx_code}.{detected}.forced.srt"
+                    else:
+                        new_path = parent_dir / f"{base_name}.{sxxexx_code}.{detected}.srt"
             else:
                 if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
                     new_path = parent_dir / f"{base_name}.{detected}.forced.srt"
@@ -974,9 +1022,17 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             protected_subs.add(str(parent_dir / f"{base_name}.{lang}.forced.srt"))
     if SERIES_MODE and sxxexx_code:
         for lang in WANTED_LANGUAGES:
-            protected_subs.add(str(parent_dir / f"{base_name}.{lang}.{sxxexx_code}.srt"))
-            if PRESERVE_FORCED_SUBTITLES:
-                protected_subs.add(str(parent_dir / f"{base_name}.{lang}.forced.{sxxexx_code}.srt"))
+            # Check if video filename already contains the episode code
+            if sxxexx_code.lower() in base_name.lower():
+                # Video already has SxxExx in name, subtitle uses standard naming
+                protected_subs.add(str(parent_dir / f"{base_name}.{lang}.srt"))
+                if PRESERVE_FORCED_SUBTITLES:
+                    protected_subs.add(str(parent_dir / f"{base_name}.{lang}.forced.srt"))
+            else:
+                # Video doesn't have SxxExx, subtitle has SxxExx before language
+                protected_subs.add(str(parent_dir / f"{base_name}.{sxxexx_code}.{lang}.srt"))
+                if PRESERVE_FORCED_SUBTITLES:
+                    protected_subs.add(str(parent_dir / f"{base_name}.{sxxexx_code}.{lang}.forced.srt"))
 
     for lang in WANTED_LANGUAGES:
         correct_sub = parent_dir / f"{base_name}.{lang}.srt"
