@@ -1,6 +1,6 @@
 # 🎬 Subservient Subtitle Automation Suite
 
-![Version](https://img.shields.io/badge/version-v0.85-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-v0.87-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-supported-orange.svg)
 ![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)
@@ -1192,12 +1192,13 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
-| 🐳 **2025-08-04** | v0.85 | 🆕 Docker Support | Full Docker containerization with docker-compose support and Unraid compatibility! |
-| 🧹 **2025-08-03** | v0.83 | 🆕 Subtitle Cleaner | Full subtitle cleaning tool with ad removal, backup/restore, and batch processing! |
-| 💬 **2025-08-01** | v0.81 | 🎯 7 bugs fixed! | More in-depth (forced)subtitle preservation, language code mismatch fix and more! |
-| 🔥 **2025-07-28** | v0.80 | 🎉 ALPHA release | Video synchronisation is fully operational, repo is public! |
-| 🐛 **2025-07-20** | v0.79 | 🔥 Single/batch video syncs now work! | Launch day coming soon |
-| 🔧 **2025-07-05** | v0.78 | 🎛️ Manual Verification | Added manual offset verification menu and editor |
+| 🌐 **2025-11-23** | v0.87 | Early TV-Series Support | TV-Series mode is fully functional, albeit a tad clunky and slightly untested |
+| 🐳 **2025-08-04** | v0.85 | Docker Support | Full Docker containerization with docker-compose support and Unraid compatibility! |
+| 🧹 **2025-08-03** | v0.83 | Subtitle Cleaner | Full subtitle cleaning tool with ad removal, backup/restore, and batch processing! |
+| 💬 **2025-08-01** | v0.81 | 7 bugs fixed! | More in-depth (forced)subtitle preservation, language code mismatch fix and more! |
+| 🔥 **2025-07-28** | v0.80 | ALPHA release | Video synchronisation is fully operational, repo is public! |
+| 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Launch day coming soon |
+| 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
 > 🎉 **Current Version: v0.85** - New feature: Full Docker containerization support with docker-compose and Unraid compatibility!
 
@@ -1329,6 +1330,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
 
