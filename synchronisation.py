@@ -163,6 +163,11 @@ def sync_tag():
     """Return formatted synchronisation tag for console output."""
     return f"{Style.BRIGHT}{Fore.BLUE}[Synchronisation]{Style.RESET_ALL}"
 
+def sync_mode_tag():
+    """Return formatted synchronisation tag with mode indicator for sync-specific messages."""
+    mode_tag = f"{Style.DIM}{Fore.YELLOW}[Smart Sync]{Style.RESET_ALL}" if SMART_SYNC else f"{Style.DIM}{Fore.YELLOW}[First Match]{Style.RESET_ALL}"
+    return f"{Style.BRIGHT}{Fore.BLUE}[Synchronisation]{Style.RESET_ALL} {mode_tag}"
+
 def print_and_log(msg, end='\n', log_only=False):
     """Print message to console and write to log file."""
     if not log_only:
@@ -232,6 +237,7 @@ ACCEPT_OFFSET_THRESHOLD = float(config_values.get('accept_offset_threshold', 0.0
 REJECT_OFFSET_THRESHOLD = float(config_values.get('reject_offset_threshold', 2.5))
 PRESERVE_FORCED_SUBTITLES = config_values.get('preserve_forced_subtitles', 'false').lower() in ('true', '1', 'yes', 'on')
 PRESERVE_UNWANTED_SUBTITLES = config_values.get('preserve_unwanted_subtitles', 'false').lower() in ('true', '1', 'yes', 'on')
+SMART_SYNC = config_values.get('smart_sync', 'false').lower() in ('true', '1', 'yes', 'on')
 drift_marked = False
 
 def read_languages_from_config(config_path):
@@ -1116,84 +1122,206 @@ for idx, video in enumerate(videos, 1):
         subs_sorted = sorted(subs, key=lambda x: int(re.search(r"number(\d+)", x).group(1)))
         logged_video_context = False
         
-        for sub in subs_sorted:
-            if sub.endswith('.DRIFT.srt') or sub.endswith('.FAILED.srt'):
-                continue
-                
-            ext = os.path.splitext(sub)[1].lower()
-            
-            # Determine output filename (series vs standard naming)
-            if SERIES_MODE:
-                sxxexx_code = extract_sxxexx_code(video)
-                if sxxexx_code:
-                    # Check if video filename already contains the episode code
-                    if sxxexx_code.lower() in video_basename.lower():
-                        # Video already has SxxExx in name, use standard naming
-                        output_sub = f"{video_basename}.{lang}{ext}"
-                    else:
-                        # Video doesn't have SxxExx, add it BEFORE language (for media player compatibility)
-                        output_sub = f"{video_basename}.{sxxexx_code}.{lang}{ext}"
-                else:
-                    output_sub = f"{video_basename}.{lang}{ext}"
-            else:
-                output_sub = f"{video_basename}.{lang}{ext}"
-            
-            if os.path.exists(output_sub):
-                found_good = True
-                break
+        if SMART_SYNC:
+            # SMART SYNC MODE: Sync all candidates first, then pick the best one
+            sync_results = []  # List of (sub, output_sub, sync_success, offset_seconds)
             
             if not logged_video_context:
                 print_and_log(f"➤ {os.path.basename(video)}", log_only=True)
                 logged_video_context = True
             
-            print_and_log(f"{Fore.YELLOW}Synchronizing {os.path.basename(sub)} {Fore.LIGHTYELLOW_EX}[{lang.upper()}]{Style.RESET_ALL}")
+            print_and_log(f"{sync_mode_tag()} {Fore.CYAN}Smart Sync: Testing all {len(subs_sorted)} candidates for {lang.upper()}{Style.RESET_ALL}")
             
-            sync_success, offset_seconds = synchronize_subtitle_with_ffsubsync(video, sub, output_sub)
-            
-            if sync_success:
-                if offset_seconds > REJECT_OFFSET_THRESHOLD:
-                    print_and_log(f"{sync_tag()} {Fore.RED}⚠ High offset detected ({offset_seconds:.3f}s > {REJECT_OFFSET_THRESHOLD}s) - marking as DRIFT{Style.RESET_ALL}")
+            # Synchronize ALL subtitles in the batch
+            for i, sub in enumerate(subs_sorted, 1):
+                if sub.endswith('.DRIFT.srt') or sub.endswith('.FAILED.srt'):
+                    continue
                     
-                    try:
-                        os.remove(output_sub)
-                        mark_subtitle_as_drift(sub, lang, create_copies=False)  
-                        drift_subs.append(sub)
-                        
-                        continue
-                    except Exception as e:
-                        print_and_log(f"{sync_tag()} {Fore.RED}Error handling high offset: {str(e)}{Style.RESET_ALL}")
-                        continue
-                        
-                elif offset_seconds > ACCEPT_OFFSET_THRESHOLD:
-                    print_and_log(f"{sync_tag()} {Fore.YELLOW}✓ Synchronized with moderate offset ({offset_seconds:.3f}s) - added to manual verification{Style.RESET_ALL}")
-                    
-                    try:
-                        add_offset_entry(video, video_dir, lang, output_sub, [offset_seconds], anchor_path, [os.path.basename(sub)])
-                    except Exception as e:
-                        print_and_log(f"{sync_tag()} {Fore.RED}Error adding offset entry: {str(e)}{Style.RESET_ALL}")
-                        
+                ext = os.path.splitext(sub)[1].lower()
+                
+                # Determine output filename (series vs standard naming)
+                if SERIES_MODE:
+                    sxxexx_code = extract_sxxexx_code(video)
+                    if sxxexx_code:
+                        if sxxexx_code.lower() in video_basename.lower():
+                            temp_output = f"{video_basename}.{lang}.temp{i}{ext}"
+                        else:
+                            temp_output = f"{video_basename}.{sxxexx_code}.{lang}.temp{i}{ext}"
+                    else:
+                        temp_output = f"{video_basename}.{lang}.temp{i}{ext}"
                 else:
-                    print_and_log(f"{sync_tag()} {Fore.GREEN}✓ Synchronized with excellent precision ({offset_seconds:.3f}s ≤ {ACCEPT_OFFSET_THRESHOLD}s){Style.RESET_ALL}")
+                    temp_output = f"{video_basename}.{lang}.temp{i}{ext}"
                 
-                found_good = True
-                successful_syncs += 1
-                successful_syncs_per_lang[lang] = successful_syncs_per_lang.get(lang, 0) + 1
-                processed_subs.add(sub)
+                print_and_log(f"{Fore.YELLOW}  [{i}/{len(subs_sorted)}] Syncing {os.path.basename(sub)}{Style.RESET_ALL}")
                 
-                cleanup_drift_and_failed(video_dir, lang, keep_file=output_sub, clean_drifts=True, video=video)
+                sync_success, offset_seconds = synchronize_subtitle_with_ffsubsync(video, sub, temp_output)
+                sync_results.append((sub, temp_output, sync_success, offset_seconds))
                 
-                break
-            else:
-                print_and_log(f"{sync_tag()} {Fore.RED}✗ Synchronization failed for {os.path.basename(sub)}{Style.RESET_ALL}")
+                if sync_success:
+                    print_and_log(f"{sync_tag()} {Fore.GREEN}    ✓ Offset: {offset_seconds:.3f}s{Style.RESET_ALL}")
+                else:
+                    print_and_log(f"{sync_tag()} {Fore.RED}    ✗ Failed{Style.RESET_ALL}")
+            
+            # Find the best result
+            valid_results = [(sub, temp_out, offset) for sub, temp_out, success, offset in sync_results 
+                           if success and offset <= REJECT_OFFSET_THRESHOLD]
+            
+            if valid_results:
+                # Pick the one with the lowest offset
+                best_sub, best_temp_output, best_offset = min(valid_results, key=lambda x: x[2])
                 
-                base_name = os.path.splitext(sub)[0]
-                failed_name = f"{base_name}.FAILED{ext}"
+                # Determine final output filename
+                if SERIES_MODE:
+                    sxxexx_code = extract_sxxexx_code(video)
+                    if sxxexx_code:
+                        if sxxexx_code.lower() in video_basename.lower():
+                            final_output = f"{video_basename}.{lang}{os.path.splitext(best_sub)[1].lower()}"
+                        else:
+                            final_output = f"{video_basename}.{sxxexx_code}.{lang}{os.path.splitext(best_sub)[1].lower()}"
+                    else:
+                        final_output = f"{video_basename}.{lang}{os.path.splitext(best_sub)[1].lower()}"
+                else:
+                    final_output = f"{video_basename}.{lang}{os.path.splitext(best_sub)[1].lower()}"
                 
+                # Move best result to final location
                 try:
-                    os.rename(sub, failed_name)
-                    print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as FAILED: {os.path.basename(failed_name)}{Style.RESET_ALL}")
+                    os.rename(best_temp_output, final_output)
+                    
+                    # Display comparison results
+                    print_and_log(f"{sync_mode_tag()} {Fore.CYAN}Smart Sync Results:{Style.RESET_ALL}")
+                    for sub, temp_out, success, offset in sync_results:
+                        if success and offset <= REJECT_OFFSET_THRESHOLD:
+                            status = f"{Fore.GREEN}✓ {offset:.3f}s{Style.RESET_ALL}"
+                            if sub == best_sub:
+                                status += f" {Fore.CYAN}← BEST{Style.RESET_ALL}"
+                        elif success:
+                            status = f"{Fore.RED}✗ {offset:.3f}s (rejected){Style.RESET_ALL}"
+                        else:
+                            status = f"{Fore.RED}✗ Failed{Style.RESET_ALL}"
+                        print_and_log(f"    {os.path.basename(sub)}: {status}")
+                    
+                    # Handle the best result based on its quality
+                    if best_offset > ACCEPT_OFFSET_THRESHOLD:
+                        print_and_log(f"{sync_tag()} {Fore.YELLOW}✓ Best match: {os.path.basename(best_sub)} ({best_offset:.3f}s) - added to manual verification{Style.RESET_ALL}")
+                        try:
+                            add_offset_entry(video, video_dir, lang, final_output, [best_offset], anchor_path, [os.path.basename(best_sub)])
+                        except Exception as e:
+                            print_and_log(f"{sync_tag()} {Fore.RED}Error adding offset entry: {str(e)}{Style.RESET_ALL}")
+                    else:
+                        print_and_log(f"{sync_tag()} {Fore.GREEN}✓ Best match: {os.path.basename(best_sub)} ({best_offset:.3f}s ≤ {ACCEPT_OFFSET_THRESHOLD}s){Style.RESET_ALL}")
+                    
+                    found_good = True
+                    successful_syncs += 1
+                    successful_syncs_per_lang[lang] = successful_syncs_per_lang.get(lang, 0) + 1
+                    processed_subs.add(best_sub)
+                    
+                    cleanup_drift_and_failed(video_dir, lang, keep_file=final_output, clean_drifts=True, video=video)
+                    
                 except Exception as e:
-                    print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to FAILED: {str(e)}{Style.RESET_ALL}")
+                    print_and_log(f"{sync_tag()} {Fore.RED}Error finalizing best result: {str(e)}{Style.RESET_ALL}")
+            else:
+                print_and_log(f"{sync_mode_tag()} {Fore.RED}Smart Sync: No acceptable results found for {lang.upper()}{Style.RESET_ALL}")
+            
+            # Clean up all temporary files
+            for sub, temp_output, success, offset in sync_results:
+                try:
+                    if os.path.exists(temp_output):
+                        os.remove(temp_output)
+                except:
+                    pass
+            
+            # Mark failed subtitles
+            if not found_good:
+                for sub in subs_sorted:
+                    if not sub.endswith('.DRIFT.srt') and not sub.endswith('.FAILED.srt'):
+                        base_name = os.path.splitext(sub)[0]
+                        failed_name = f"{base_name}.FAILED{os.path.splitext(sub)[1]}"
+                        try:
+                            os.rename(sub, failed_name)
+                            print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as FAILED: {os.path.basename(failed_name)}{Style.RESET_ALL}")
+                        except Exception as e:
+                            print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to FAILED: {str(e)}{Style.RESET_ALL}")
+        
+        else:
+            # STANDARD MODE: First match mode (original behavior)
+            for sub in subs_sorted:
+                if sub.endswith('.DRIFT.srt') or sub.endswith('.FAILED.srt'):
+                    continue
+                    
+                ext = os.path.splitext(sub)[1].lower()
+                
+                # Determine output filename (series vs standard naming)
+                if SERIES_MODE:
+                    sxxexx_code = extract_sxxexx_code(video)
+                    if sxxexx_code:
+                        # Check if video filename already contains the episode code
+                        if sxxexx_code.lower() in video_basename.lower():
+                            # Video already has SxxExx in name, use standard naming
+                            output_sub = f"{video_basename}.{lang}{ext}"
+                        else:
+                            # Video doesn't have SxxExx, add it BEFORE language (for media player compatibility)
+                            output_sub = f"{video_basename}.{sxxexx_code}.{lang}{ext}"
+                    else:
+                        output_sub = f"{video_basename}.{lang}{ext}"
+                else:
+                    output_sub = f"{video_basename}.{lang}{ext}"
+                
+                if os.path.exists(output_sub):
+                    found_good = True
+                    break
+                
+                if not logged_video_context:
+                    print_and_log(f"➤ {os.path.basename(video)}", log_only=True)
+                    logged_video_context = True
+                
+                print_and_log(f"{Fore.YELLOW}Synchronizing {os.path.basename(sub)} {Fore.LIGHTYELLOW_EX}[{lang.upper()}]{Style.RESET_ALL}")
+                
+                sync_success, offset_seconds = synchronize_subtitle_with_ffsubsync(video, sub, output_sub)
+                
+                if sync_success:
+                    if offset_seconds > REJECT_OFFSET_THRESHOLD:
+                        print_and_log(f"{sync_tag()} {Fore.RED}⚠ High offset detected ({offset_seconds:.3f}s > {REJECT_OFFSET_THRESHOLD}s) - marking as DRIFT{Style.RESET_ALL}")
+                        
+                        try:
+                            os.remove(output_sub)
+                            mark_subtitle_as_drift(sub, lang, create_copies=False)  
+                            drift_subs.append(sub)
+                            
+                            continue
+                        except Exception as e:
+                            print_and_log(f"{sync_tag()} {Fore.RED}Error handling high offset: {str(e)}{Style.RESET_ALL}")
+                            continue
+                            
+                    elif offset_seconds > ACCEPT_OFFSET_THRESHOLD:
+                        print_and_log(f"{sync_tag()} {Fore.YELLOW}✓ Synchronized with moderate offset ({offset_seconds:.3f}s) - added to manual verification{Style.RESET_ALL}")
+                        
+                        try:
+                            add_offset_entry(video, video_dir, lang, output_sub, [offset_seconds], anchor_path, [os.path.basename(sub)])
+                        except Exception as e:
+                            print_and_log(f"{sync_tag()} {Fore.RED}Error adding offset entry: {str(e)}{Style.RESET_ALL}")
+                            
+                    else:
+                        print_and_log(f"{sync_tag()} {Fore.GREEN}✓ Synchronized with excellent precision ({offset_seconds:.3f}s ≤ {ACCEPT_OFFSET_THRESHOLD}s){Style.RESET_ALL}")
+                    
+                    found_good = True
+                    successful_syncs += 1
+                    successful_syncs_per_lang[lang] = successful_syncs_per_lang.get(lang, 0) + 1
+                    processed_subs.add(sub)
+                    
+                    cleanup_drift_and_failed(video_dir, lang, keep_file=output_sub, clean_drifts=True, video=video)
+                    
+                    break
+                else:
+                    print_and_log(f"{sync_tag()} {Fore.RED}✗ Synchronization failed for {os.path.basename(sub)}{Style.RESET_ALL}")
+                    
+                    base_name = os.path.splitext(sub)[0]
+                    failed_name = f"{base_name}.FAILED{ext}"
+                    
+                    try:
+                        os.rename(sub, failed_name)
+                        print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as FAILED: {os.path.basename(failed_name)}{Style.RESET_ALL}")
+                    except Exception as e:
+                        print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to FAILED: {str(e)}{Style.RESET_ALL}")
         
         if not found_good:
             all_current_drifted = all(f.endswith('.DRIFT.srt') or f.endswith('.FAILED.srt') 

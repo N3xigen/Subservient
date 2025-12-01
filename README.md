@@ -1,58 +1,61 @@
-# 🎬 Subservient Subtitle Automation Suite
+# 🎬 Subservient - The AI Subtitle Synchronizer
 
-![Version](https://img.shields.io/badge/version-v0.87-brightgreen.svg)
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![Docker](https://img.shields.io/badge/docker-supported-orange.svg)
-![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)
-![Dependencies](https://img.shields.io/badge/dependencies-8%20packages-green.svg)
+<div align="center">
 
-Trello board where I keep track of reported bugs and features ---> https://trello.com/b/unbhHN3v/subservient 
-```
-  _________    ___.                             .__               __   
- /   _____/__ _\_ |__   ______ ______________  _|__| ____   _____/  |_ 
- \_____  \|  |  \ __ \ /  ___// __ \_  __ \  \/ /  |/ __ \ /    \   __\
- /        \  |  / \_\ \\___ \\  ___/|  | \/\   /|  \  ___/|   |  \  |  
-/_______  /____/|___  /____  >\___  >__|    \_/ |__|\___  >___|  /__|  
-        \/          \/     \/     \/                    \/     \/      
-```
+[![Version](https://img.shields.io/badge/version-v0.88-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
+[![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
+[![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/N3xigen/Subservient)
+
+[![Plex](https://img.shields.io/badge/Plex-compatible-orange.svg?logo=plex&logoColor=white)](https://plex.tv)
+[![Jellyfin](https://img.shields.io/badge/Jellyfin-compatible-purple.svg?logo=jellyfin&logoColor=white)](https://jellyfin.org)
+[![Emby](https://img.shields.io/badge/Emby-compatible-green.svg?logo=emby&logoColor=white)](https://emby.media)
+[![Unraid](https://img.shields.io/badge/Unraid-compatible-red.svg?logo=unraid&logoColor=white)](https://unraid.net)
+
+</div>
+
+
 <br>
 
-> 🚀 **Automated subtitle extraction, download, and synchronisation suite for your video collection**
+## 🔍 What Subservient Does
+
+> **🎯 Automated subtitle synchronization for your video collection**
 > 
-> Transform your video library with perfectly synchronized subtitles in multiple languages. Achieves optimal results through a complex interplay of automated processing and strategic manual control when needed.
+> Transform your viewing experience with perfectly synchronized subtitles in multiple languages. <br>
+>Subservient automatically extracts, downloads, and syncs subtitle files using advanced audio analysis, eliminating the frustration of out-of-sync dialogue. <br>
+> Unlike comprehensive media management systems like Bazarr or Sonarr, Subservient is a focused, standalone application dedicated specifically to subtitle synchronization.<br>Simply point it at your video files, and it handles the technical complexity while giving you control over the results.
 
-### 🎯 What Subservient Does For You
+### 🔄 Core Workflow
+**Extract** → **Download** → **Synchronize** → **Verify**
 
-**🔥 Core Automation**: Drop `subordinate.py` into any folder and Subservient handles everything
-- **Extract** internal subtitles from video files for immediate use
-- **Download** missing languages automatically via OpenSubtitles API  
-- **AI-Sync** all subtitles using advanced audio analysis (ffsubsync)
-- **Manual verification** with detailed offset editing for perfect results
+1. **📤 Subtitle Extraction**: Automatically extracts embedded subtitles from video files
+2. **🌐 Intelligent Download**: Searches OpenSubtitles for missing languages based on your preferences  
+3. **🎵 Audio-Based Synchronization**: Uses FFSubSync's advanced audio analysis to achieve frame-perfect timing
+4. **✅ Quality Verification**: Presents sync results for manual verification when automatic quality thresholds aren't met
 
-**⚙️ Smart Processing**:
-- **Movie mode**: Single files or batch folders (largest file per folder)
-- **Series mode**: All episodes with S##E## detection (v0.9)
-- **Flexible control**: Keep/remove internal subtitles and forced subtitles as needed
-- **Comprehensive config**: Detailed `.config` file for complete customization
-- **Automated Subtitle Cleaning**: Remove promotional text, translator notes and unwanted metadata from subtitle files
+> **🧹 Optional**: Content cleaning tool available separately to remove promotional text and translator notes
 
-<br>
+### Processing Modes
 
-**🎮 Perfect For**: Movie collectors, TV series enthusiasts, multilingual households, content creators, or anyone tired of out-of-sync subtitles ruining their viewing experience!
+| Mode | Description | Best For |
+|------|-------------|----------|
+| **🎭 Movie Mode** | Processes the largest video file in each folder | Film collections with extras and multiple versions |
+| **📺 Series Mode** | Processes all videos with SxxExx pattern detection | TV shows with consistent episode naming |
 
-<br>
+### ⚡ Synchronization Strategies  
 
-## 📽️ Subservient Installation & Configuration (video) Guide
+| Strategy | Approach | Performance |
+|----------|----------|-------------|
+| **🚀 First Match** | Uses first successful sync | Quick processing, good results |
+| **🎯 Smart Sync** | Tests all candidates, picks best | Slower but highest quality sync |
 
-The video below provides a comprehensive walkthrough for installing and configuring Subservient.<br>
-It covers Python setup, required dependencies, and the use of external tools like ffmpeg and mkvtoolnix.<br>
-Please note that this installation video only covers the native Python version, and not the docker container.<br>
-For a (textual) guide installing and running the containerized version of Subservient, please scroll down.<br>
+### 💡 Built for Real-World Use
 
-  <a href="https://www.youtube.com/watch?v=33lcr6dCtRw">
-    <img src="https://i.ibb.co/6JBG73qP/Screenshot-2025-07-28-112319.png" alt="Screenshot-2025-07-28-112319" alt="Subservient Instructional Video" width="480"/>
-  </a>
+>Whether you're managing a personal movie collection, <br>
+>processing TV series with hundreds of episodes, <br>
+>or handling multilingual content for family viewing, <br> 
+>Subservient adapts to your workflow while maintaining professional-grade subtitle quality.
 
 <br>
 
@@ -71,7 +74,32 @@ For a (textual) guide installing and running the containerized version of Subser
 
 ## 🔧 INSTALLING AND CONFIGURING SUBSERVIENT
 
-Choose your installation method based on your preferences and technical setup:
+Subservient offers two installation methods, each with distinct advantages:
+
+### 🖥️ **Native Python Installation** (Recommended for Performance)
+> **Best for:** Windows, macOS, and Linux users who want maximum performance
+- **✅ Advantages:** Uses 100% of your system resources, faster processing, native OS integration
+- **⚠️ Complexity:** Requires Python setup and dependency management
+
+### 🐳 **Docker Container Installation** 
+> **Best for:** Unraid, Linux servers, and users who prefer containerized applications
+- **✅ Advantages:** Easy setup, isolated environment, consistent across platforms
+- **⚠️ Performance:** May be slower, especially with limited RAM/CPU allocation
+
+---
+
+### 📺 **Video Installation Guide (Native Python)**
+The video below provides a comprehensive walkthrough for the native Python installation, covering Python setup, required dependencies, setting up an OpenSubtitles consumer, and external tools like ffmpeg and mkvtoolnix.
+
+> **📝 Note:** Although this video was created for an older Subservient version, the installation procedure remains exactly the same.
+
+  <a href="https://www.youtube.com/watch?v=33lcr6dCtRw">
+    <img src="https://i.ibb.co/6JBG73qP/Screenshot-2025-07-28-112319.png" alt="Subservient Installation Video Guide" width="480"/>
+  </a>
+
+---
+
+**Choose your installation method:**
 
 <details>
 <summary><strong>🐍 Install Subservient with Python (Native Installation)</strong></summary>
@@ -445,18 +473,30 @@ services:
 
 </details>
 
+---
+
+## ⚙️ Configuration
+
+> **🔧 Unified Configuration System**
+> 
+> Both installation methods use the same `.config` file for all settings. Configure your OpenSubtitles credentials, processing preferences,<br> and subtitle languages in one place that works for both native Python and Docker versions.<br>
+>
+>  **💡 Take time to review the configuration settings below.** While Subservient works with sensible defaults out of the box,<br> understanding these settings determines how powerfully you can utilize and customize Subservient to match your specific needs.
+
 <details>
+<summary><strong>📝 All Configuration settings explained (.config file)</strong></summary>
 
-<br>
+### 📋 Configuration Overview
 
-<summary><strong>⚙️ Configuration (.config file) </strong></summary>
+- **🌐 OpenSubtitles Setup**: Create account and configure API credentials (required)
+- **🔑 API Settings**: OpenSubtitles credentials configuration
+- **🎯 Processing**: Series/Movie mode, Smart Sync, languages  
+- **⚙️ Quality**: Sync thresholds, performance tuning
+- **📁 File Management**: Video handling, subtitle preservation
 
-> 🔧 **Unified Configuration**  
-> Both the **native Python** and **Docker** versions use the same `.config` file located in the main Subservient folder.<br>Therefore, any changes you make to the configuration will apply to both versions seamlessly.
+---
 
-Edit the `.config` file to set your OpenSubtitles credentials and preferences.
-
-#### 🌐 OpenSubtitles Setup
+### 🌐 OpenSubtitles Setup
 
 1. Create account at [opensubtitles.com](https://www.opensubtitles.com/)
 2. Go to **API Consumers** and create a new consumer
@@ -471,35 +511,186 @@ Edit the `.config` file to set your OpenSubtitles credentials and preferences.
 > 
 > **VIP membership** is a paid upgrade that increases your daily download limit to 1000.<br>This is recommended if you plan to use Subservient substantially.<br>You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
 
-#### 🔧 All Configuration Options
+<br>
 
-Open `.config` and configure these settings:
+---
+
+### 🔑 Required Settings (OpenSubtitles API)
 
 | Setting | Description | Default | Required |
 |---------|-------------|---------|----------|
-| **api_key** | OpenSubtitles consumer API key from API Consumers section | `(empty)` | ✅ |
-| **username** | Your OpenSubtitles account username | `(empty)` | ✅ |
-| **password** | Your OpenSubtitles account password | `(empty)` | ✅ |
+| **api_key** | OpenSubtitles consumer API key from API Consumers section | `your_api_key_here` | ✅ |
+| **username** | Your OpenSubtitles account username | `your_username` | ✅ |
+| **password** | Your OpenSubtitles account password | `your_password` | ✅ |
 | **api_url** | OpenSubtitles API endpoint (only change if API URL changes) | `https://api.opensubtitles.com/api/v1` | - |
-| **languages** | Comma-separated languages to download and sync (e.g. `en,nl,fr`) | `en` | - |
-| **audio_track_languages** | Audio track languages to keep in video files (`ALL` = keep all) | `en,ja` | - |
-| **accept_offset_threshold** | Auto-accept sync threshold in seconds (lower = stricter quality) | `0.05` | - |
-| **reject_offset_threshold** | Auto-reject sync threshold in seconds (higher = more lenient) | `2.5` | - |
-| **series_mode** | Process all videos in folder (`true`) vs only largest file (`false`) | `false` | - |
-| **delete_extra_videos** | Permanently delete extra videos (`true`) or move to folder (`false`) | `false` | - |
-| **extras_folder_name** | Folder name for moved extra videos when `delete_extra_videos=false` | `extras` | - |
-| **preserve_forced_subtitles** | Keep FORCED subtitle tracks (for foreign dialogue scenes) | `false` | - |
-| **preserve_unwanted_subtitles** | Keep all subtitle languages, not just wanted ones | `false` | - |
-| **pause_seconds** | Seconds to pause between processing phases | `5` | - |
-| **max_search_results** | Maximum subtitle search results per video (Free: ≤12, VIP: 20+) | `10` | - |
-| **top_downloads** | Subtitles to test per batch (Free: 2-4, VIP: 5-10) | `3` | - |
-| **download_retry_503** | Retry attempts for server overload errors (recommended: 6) | `6` | - |
-| **skip_dirs** | Comma-separated folder names to ignore during scanning | `extras,trailers,samples...` | - |
-| **unwanted_terms** | Terms to filter from subtitle search queries (technical metadata) | `720p,BluRay,x264...` | - |
+
+<br>
+
+### 🎯 Processing & Synchronization Settings
+
+| Setting | Description | Default | Options |
+|---------|-------------|---------|---------|
+| **series_mode** | Processing mode selection | `false` | `true` = TV Series (all videos), `false` = Movies (largest per folder) |
+| **smart_sync** | Subtitle selection strategy | `true` | `true` = Test all candidates, pick best; `false` = Use first successful sync |
+| **languages** | Subtitle languages to download and sync | `en` | Comma-separated codes (e.g. `en,nl,fr,de`) |
+| **audio_track_languages** | Audio track languages to keep in video files | `en,ja` | Language codes or `ALL` to keep all tracks |
+
+> **📺 series_mode**: When `true`, processes ALL videos with SxxExx pattern detection. When `false`, only processes the largest video file per folder (movie mode).
+> 
+> **🎯 smart_sync**: When `true`, tests all subtitle candidates and picks the best quality sync. When `false`, uses first acceptable match (faster but potentially lower quality).
+> 
+> **🌐 languages**: Controls which subtitle languages are downloaded from OpenSubtitles. Does not affect preservation of existing subtitles.
+> 
+> **🔊 audio_track_languages**: Removes audio tracks not in this list to reduce file size. Set to `ALL` to keep all audio tracks unchanged.
+
+**Series Mode Details:**
+- `false`: **Movie Mode** - Processes only the largest video file per folder
+- `true`: **TV Series Mode** - Processes ALL videos with SxxExx pattern detection and integrity checking
+
+**Smart Sync Details:**
+- `false`: **First Match** - Uses first subtitle that syncs acceptably (faster)  
+- `true`: **Smart Sync** - Tests ALL candidates, compares results, picks best quality (slower but higher quality)
+
+<br>
+
+### ⚙️ Quality & Performance Settings
+
+| Setting | Description | Default | Notes |
+|---------|-------------|---------|-------|
+| **accept_offset_threshold** | Auto-accept sync threshold (seconds) | `0.05` | Lower = stricter quality, higher = more auto-accepts |
+| **reject_offset_threshold** | Auto-reject sync threshold (seconds) | `2.5` | Higher = more lenient, lower = stricter rejections |
+| **max_search_results** | Maximum subtitle search results per video | `10` | Free: ≤12, VIP: 20+ |
+| **top_downloads** | Subtitles to test per batch | `3` | Free: 2-4, VIP: 5-10 |
+| **download_retry_503** | Retry attempts for server errors | `6` | Recommended: 6 for busy periods |
+| **pause_seconds** | Pause between processing phases | `5` | Prevents API rate limiting |
+
+> **✅ accept_offset_threshold**: Subtitles with sync quality below this threshold are automatically accepted without manual verification. Lower values ensure higher quality but require more manual checks.
+> 
+> **❌ reject_offset_threshold**: Subtitles with sync quality above this threshold are automatically rejected. Higher values give more subtitle candidates a chance but may require more manual verification.
+> 
+> **🔍 max_search_results**: More results increase chances of finding good subtitles but use more API quota. Free users should stay ≤12, VIP users can go higher.
+> 
+> **⬇️ top_downloads**: Number of subtitles tested simultaneously. Lower preserves download quota, higher speeds up processing if you have sufficient quota.
+> 
+> **🔄 download_retry_503**: OpenSubtitles servers can be busy. More retries increase success rate but slow processing during peak times.
+> 
+> **⏸️ pause_seconds**: Prevents API rate limiting and gives you time to read processing information between phases.
+
+<br>
+
+### 📁 File Management Settings
+
+| Setting | Description | Default | Warning |
+|---------|-------------|---------|---------|
+| **delete_extra_videos** | Handle extra videos in folders | `false` | ⚠️ `true` = **PERMANENT DELETION** |
+| **extras_folder_name** | Folder name for moved extras | `extras` | Used when `delete_extra_videos=false` |
+| **preserve_forced_subtitles** | Keep FORCED subtitle tracks | `false` | For foreign dialogue scenes |
+| **preserve_unwanted_subtitles** | Keep all subtitle languages | `false` | Override language filtering |
+| **skip_dirs** | Folder names to ignore | `extras,trailers,samples...` | Comma-separated list |
+| **unwanted_terms** | Terms to filter from searches | `720p,BluRay,x264...` | Technical metadata removal |
+
+> **🗑️ delete_extra_videos**: When `false` (safe), moves extra videos to specified folder. When `true` (dangerous), permanently deletes all but the largest video file per folder. Ignored in series mode.
+> 
+> **📁 extras_folder_name**: Name of the folder where extra videos are moved when `delete_extra_videos=false`.
+> 
+> **🔤 preserve_forced_subtitles**: Preserves FORCED subtitle tracks (typically used for foreign dialogue in otherwise native-language movies) when `true`.
+> 
+> **🌐 preserve_unwanted_subtitles**: When `true`, keeps ALL subtitle tracks regardless of language settings. When `false`, removes tracks not in the languages list.
+> 
+> **🚫 skip_dirs**: Ignores these folder names during video discovery (case-insensitive matching).
+> 
+> **🏷️ unwanted_terms**: Removes technical terms from filenames before searching OpenSubtitles for cleaner, more accurate search queries.
 
 > ⚠️ **Warning:** `delete_extra_videos=true` **PERMANENTLY DELETES** all video files except the largest in each folder.
 
 <br>
+
+</details>
+
+## ⚙️ Mode Details & Advanced Configuration
+
+> **🔧 Processing Mode Explanations & Advanced Settings**
+> 
+> Detailed explanations of how TV Series Mode and Smart Sync work, plus advanced configuration patterns like subtitle preservation logic. These help you understand and optimize your `.config` settings.
+
+<details>
+<summary><strong>⚙️ Mode Details & Advanced Configuration</strong></summary>
+
+<br>
+
+<details>
+<summary><strong>📺 TV Series Mode</strong> - Complete episode processing with SxxExx detection</summary>
+
+### 🚀 What Series Mode Does
+
+**Series Mode** (`series_mode=true`) transforms Subservient to handle TV shows with advanced episode detection and processing:
+
+#### 🔍 **SxxExx Pattern Detection**
+- **Automatic Recognition**: Detects `S01E01`, `S02E15`, `S10E23` patterns in filenames
+- **Integrity Checking**: Validates consistent naming across episodes
+- **Auto-Normalization**: Converts `S1E01` → `S01E01` for consistency
+- **Flexible Matching**: Works with various naming conventions
+
+#### 📁 **Processing Behavior**
+| Mode | File Selection | Use Case |
+|------|----------------|----------|
+| **Movie Mode** (`false`) | Largest file per folder | Movies, single videos |
+| **Series Mode** (`true`) | ALL video files | TV shows, episode collections |
+
+#### 🛡️ **Built-in Safeguards**
+- **Movie Detection**: Warns when movie files detected in series mode
+- **Pattern Validation**: Ensures episodes follow consistent SxxExx format  
+- **Missing Episode Detection**: Identifies gaps in season/episode numbering
+- **Duplicate Prevention**: Handles multiple versions of same episode
+
+#### 🎯 **Example Usage**
+```
+/TV Shows/Breaking Bad Season 1/
+├── Breaking.Bad.S01E01.720p.mkv    ← Processed ✅
+├── Breaking.Bad.S01E02.720p.mkv    ← Processed ✅  
+├── Breaking.Bad.S01E03.720p.mkv    ← Processed ✅
+└── extras/                         ← Ignored ✅
+```
+
+</details>
+
+<details>
+<summary><strong>🎯 Smart Sync Mode</strong> - Advanced subtitle selection for optimal quality</summary>
+
+### 🚀 How Smart Sync Works
+
+**Smart Sync** (`smart_sync=true`) revolutionizes subtitle selection by testing ALL candidates before choosing the best result:
+
+#### 🔄 **Sync Strategies**
+
+| Mode | Strategy | Speed | Quality | Best For |
+|------|----------|-------|---------|----------|
+| **First Match** (`false`) | Use first acceptable sync | ⚡ Fast | 🟡 Good | Quick processing, decent results |
+| **Smart Sync** (`true`) | Test all, pick best | 🐌 Slower | 🟢 Excellent | Maximum quality, worth the wait |
+
+#### 🎯 **Smart Sync Process**
+1. **Batch Download**: Gets all available subtitle candidates
+2. **Parallel Sync**: Tests synchronization for each candidate  
+3. **Quality Comparison**: Measures offset precision for all results
+4. **Best Selection**: Automatically picks the highest-quality sync
+5. **Results Display**: Shows comparison of all tested candidates
+
+#### 📊 **Quality Comparison Example**
+```
+[Synchronisation] [Smart Sync] Smart Sync Results:
+• subtitle1.srt: ✓ 0.025s ← BEST
+• subtitle2.srt: ✓ 0.087s  
+• subtitle3.srt: ✗ 3.2s (rejected)
+• subtitle4.srt: ✗ Failed
+```
+
+#### ⚙️ **Performance Impact**
+- **Processing Time**: ~2-5x longer per video
+- **API Usage**: Tests more subtitle downloads  
+- **Quality Gain**: Significantly better sync accuracy
+- **Recommendation**: Enable for movies/important content
+
+</details>
 
 <details>
 <summary>🎯 <strong>Subtitle Preservation Logic</strong> - Advanced track management settings</summary>
@@ -514,27 +705,17 @@ Open `.config` and configure these settings:
 | **preserve_forced_subtitles=false**<br>**preserve_unwanted_subtitles=false** | ❌ Treated as regular | ❌ Unwanted languages removed | **Minimal** - Only wanted languages |
 
 **🔧 What are FORCED subtitles?**
-- Used for foreign dialogue in otherwise native-language movies
-- Example: Japanese dialogue in an English movie
-- Often essential for understanding key plot points
+- **Separate subtitle tracks** that ONLY translate foreign dialogue segments
+- **NOT full movie subtitles** - they complement the main spoken language
+- Example: Japanese dialogue in an English movie gets FORCED subtitles, while English dialogue remains unsubditled
+- Often essential for understanding key plot points when foreign languages are spoken
+- **Important**: FORCED subtitles are completely independent from regular full-movie subtitles
 
 **💡 Recommended Settings:**
 - **Keep everything**: `preserve_forced_subtitles=true, preserve_unwanted_subtitles=true`
 - **Perserve languages in language setting only, including forced subtitles**: `preserve_forced_subtitles=true, preserve_unwanted_subtitles=false`
 - **Perserve subtitles for all encountered languages, but remove forced subtitles**: `preserve_forced_subtitles=false, preserve_unwanted_subtitles=true`
 - **Only preferred languages, nothing else**: `preserve_forced_subtitles=false, preserve_unwanted_subtitles=false`
-
-</details>
-
-<details>
-<summary><strong>🎬 Mode Settings</strong> - Movie mode vs Series mode</summary>
-
-| Mode | Behavior | Use For |
-|------|----------|---------|
-| **series_mode = false** | Only largest file per folder | Movies |
-| **series_mode = true** | All S##E## files | TV Shows |
-| **delete_extra_videos = false** | Move extras to folder | ✅ Safe |
-| **delete_extra_videos = true** | **PERMANENTLY DELETE** | ⚠️ Risky |
 
 </details>
 
@@ -574,13 +755,20 @@ Move `subordinate.py` to where you want to process videos, then run it:
 |----------|--------|--------|
 | **Single Movie** | Move into folder with movie | Processes one movie |
 | **Batch Movies** | Move next to movie folders | Processes all folders |
-| **TV Series** | Move into series folder + `series_mode=true` | All episodes |
+| **TV Series** | Move into series folder + `series_mode=true` | All episodes in that series |
+| **Batch TV Series** | Move next to series folders + `series_mode=true` | All episodes in all series folders |
 
-Please note that, in movie mode, you cannot have multiple movie files in the same folder.
-Doing so will cause Subservient to look for the largest movie file, process that one, and either move or delete all the other movies in there. 
-Only in TV Series mode can you have multiple movie files in the same folder.
-If your intention is to batch process multiple movies in Movie Mode, then make sure every movie file is in a separate folder.
-For instance, batch processing for movies is achieved when `subordinate.py` is placed next to a bunch of separate folders with a single movie file in them.
+Please note that, in movie mode, you cannot have multiple movie files in the same folder.<br>
+Doing so will cause Subservient to look for the largest movie file, process that one, and either move or delete all the other movies in there.<br>
+Only in TV Series mode can you have multiple movie files in the same folder.<br>
+
+**📺 Series Processing Options:**
+- **Single Series**: Place `subordinate.py` inside a series folder (e.g., `/Breaking Bad/`) to process all episodes in that series
+- **Batch Series**: Place `subordinate.py` next to multiple series folders (e.g., `/TV Shows/`) to process all episodes in all series automatically
+
+**🎬 Movie Processing Options:**  
+- **Single Movie**: Place `subordinate.py` in the folder containing the movie file
+- **Batch Movies**: Place `subordinate.py` next to multiple movie folders - each folder must contain only one movie file
 
 > ⚠️ **Movement Rules:** Use cut+paste (Ctrl+X+V), NOT copy+paste. Multiple copies will confuse Subservient.
 
@@ -636,6 +824,7 @@ Since you can't move the script file in a container environment:
 | **Single Movie** | Place movie in dedicated folder under `/movies` |
 | **Batch Movies** | Organize movies in separate folders under `/movies` |
 | **TV Series** | Use series folder structure under `/movies` + `series_mode=true` |
+| **Batch TV Series** | Organize multiple series folders under `/movies` + `series_mode=true` |
 
 ### 📁 Volume Organization
 
@@ -647,9 +836,13 @@ Structure your mounted directories for optimal workflow:
 │   └── movie1.mkv
 ├── Movie2_Folder/
 │   └── movie2.mp4
-└── TV_Series/
-    ├── Season 1/
-    └── Season 2/
+├── Breaking_Bad/
+│   ├── Breaking.Bad.S01E01.mkv
+│   ├── Breaking.Bad.S01E02.mkv
+│   └── Breaking.Bad.S01E03.mkv
+└── Better_Call_Saul/
+    ├── Better.Call.Saul.S01E01.mkv
+    └── Better.Call.Saul.S01E02.mkv
 
 /your/config/
 └── .config
@@ -1192,15 +1385,16 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
-| 🌐 **2025-11-23** | v0.87 | Early TV-Series Support | TV-Series mode is fully functional, albeit a tad clunky and slightly untested |
+| 🚀 **2025-11-30** | v0.88 | Smart Sync & Series Enhancement | Smart Sync mode for optimal subtitle selection and enhanced TV-Series functionality |
+| 🌐 **2025-11-23** | v0.87 | Early TV-Series Support | TV-Series mode with basic SxxExx detection and episode processing |
 | 🐳 **2025-08-04** | v0.85 | Docker Support | Full Docker containerization with docker-compose support and Unraid compatibility! |
 | 🧹 **2025-08-03** | v0.83 | Subtitle Cleaner | Full subtitle cleaning tool with ad removal, backup/restore, and batch processing! |
 | 💬 **2025-08-01** | v0.81 | 7 bugs fixed! | More in-depth (forced)subtitle preservation, language code mismatch fix and more! |
 | 🔥 **2025-07-28** | v0.80 | ALPHA release | Video synchronisation is fully operational, repo is public! |
-| 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Launch day coming soon |
+| 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Public alpha release |
 | 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.85** - New feature: Full Docker containerization support with docker-compose and Unraid compatibility!
+> 🎉 **Current Version: v0.88** - New features: Smart Sync mode for better subtitle quality and enhanced TV-Series support!
 
 <br>
 
@@ -1319,11 +1513,16 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.85-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.88-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+
+[![Plex](https://img.shields.io/badge/Plex-compatible-orange.svg?logo=plex&logoColor=white)](https://plex.tv)
+[![Jellyfin](https://img.shields.io/badge/Jellyfin-compatible-purple.svg?logo=jellyfin&logoColor=white)](https://jellyfin.org)
+[![Emby](https://img.shields.io/badge/Emby-compatible-green.svg?logo=emby&logoColor=white)](https://emby.media)
+[![Unraid](https://img.shields.io/badge/Unraid-compatible-red.svg?logo=unraid&logoColor=white)](https://unraid.net)
 
 *Happy subtitle processing! 🎯*
 

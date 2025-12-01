@@ -280,6 +280,7 @@ def print_subservient_checklist():
     series_mode = config.get('series_mode', None)
     top_downloads = config.get('top_downloads', None)
     delete_extra_videos = config.get('delete_extra_videos', None)
+    smart_sync = config.get('smart_sync', None)
     
     local_path = Path(__file__).parent.resolve()
     video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
@@ -321,6 +322,11 @@ def print_subservient_checklist():
             else f"{Fore.GREEN}Movie mode{Style.RESET_ALL}" if series_mode 
             else f"{Fore.RED}N/A (series_mode missing in config){Style.RESET_ALL}")
     
+    # Add sync mode display
+    sync_mode_display = (f"{Fore.CYAN}Smart Sync{Style.RESET_ALL}" if smart_sync and smart_sync.strip().lower() == 'true'
+                        else f"{Fore.CYAN}First Match{Style.RESET_ALL}" if smart_sync
+                        else f"{Fore.RED}N/A (smart_sync missing in config){Style.RESET_ALL}")
+    
     subtitle_downloads = f"{Fore.YELLOW}{top_downloads}{Style.RESET_ALL}" if top_downloads else f"{Fore.RED}N/A{Style.RESET_ALL}"
     
     if delete_extra_videos is not None:
@@ -355,6 +361,7 @@ def print_subservient_checklist():
         print_and_log(f"  {Fore.WHITE}Location:{Style.RESET_ALL}         {Fore.LIGHTYELLOW_EX}{short_path}{Style.RESET_ALL}")
         print_and_log(f"  {Fore.WHITE}Mode:{Style.RESET_ALL}             {mode}")
         print_and_log(f"  {Fore.WHITE}Processing type:{Style.RESET_ALL}  {processing_type}")
+        print_and_log(f"  {Fore.WHITE}Sync mode:{Style.RESET_ALL}        {sync_mode_display}")
         
         # Only show "Maps found" in movie mode, not in series mode
         if not is_series_mode:
