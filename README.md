@@ -22,8 +22,8 @@
 
 > **🎯 Automated subtitle synchronization for your video collection**
 > 
-> Transform your viewing experience with perfectly synchronized subtitles in multiple languages. <br>
->Subservient automatically extracts, downloads, and syncs subtitle files using advanced audio analysis, eliminating the frustration of out-of-sync dialogue. <br>
+> Transform your viewing experience with perfectly synchronized subtitles in multiple languages.
+>Subservient automatically extracts, downloads, and syncs subtitle files using advanced audio analysis, eliminating the frustration of out-of-sync dialogue.
 > Unlike comprehensive media management systems like Bazarr or Sonarr, Subservient is a focused, standalone application dedicated specifically to subtitle synchronization.<br>Simply point it at your video files, and it handles the technical complexity while giving you control over the results.
 
 ### 🔄 Core Workflow
@@ -52,9 +52,9 @@
 
 ### 💡 Built for Real-World Use
 
->Whether you're managing a personal movie collection, <br>
->processing TV series with hundreds of episodes, <br>
->or handling multilingual content for family viewing, <br> 
+>Whether you're managing a personal movie collection,
+>processing TV series with hundreds of episodes,
+>or handling multilingual content for family viewing,
 >Subservient adapts to your workflow while maintaining professional-grade subtitle quality.
 
 <br>
@@ -479,9 +479,9 @@ services:
 
 > **🔧 Unified Configuration System**
 > 
-> Both installation methods use the same `.config` file for all settings. Configure your OpenSubtitles credentials, processing preferences,<br> and subtitle languages in one place that works for both native Python and Docker versions.<br>
+> Both installation methods use the same `.config` file for all settings. Configure your OpenSubtitles credentials, processing preferences, and subtitle languages in one place that works for both native Python and Docker versions.<br>
 >
->  **💡 Take time to review the configuration settings below.** While Subservient works with sensible defaults out of the box,<br> understanding these settings determines how powerfully you can utilize and customize Subservient to match your specific needs.
+>  **💡 Take time to review the configuration settings below.** While Subservient works with sensible defaults out of the box, understanding these settings determines how powerfully you can utilize and customize Subservient to match your specific needs.
 
 <details>
 <summary><strong>📝 All Configuration settings explained (.config file)</strong></summary>
@@ -509,7 +509,7 @@ services:
 
 > 💡 **VIP Recommendation**
 > 
-> **VIP membership** is a paid upgrade that increases your daily download limit to 1000.<br>This is recommended if you plan to use Subservient substantially.<br>You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
+> **VIP membership** is a paid upgrade that increases your daily download limit to 1000.<br>This is recommended if you plan to use Subservient substantially. You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
 
 <br>
 
@@ -758,8 +758,8 @@ Move `subordinate.py` to where you want to process videos, then run it:
 | **TV Series** | Move into series folder + `series_mode=true` | All episodes in that series |
 | **Batch TV Series** | Move next to series folders + `series_mode=true` | All episodes in all series folders |
 
-Please note that, in movie mode, you cannot have multiple movie files in the same folder.<br>
-Doing so will cause Subservient to look for the largest movie file, process that one, and either move or delete all the other movies in there.<br>
+Please note that, in movie mode, you cannot have multiple movie files in the same folder.
+Doing so will cause Subservient to look for the largest movie file, process that one, and either move or delete all the other movies in there.
 Only in TV Series mode can you have multiple movie files in the same folder.<br>
 
 **📺 Series Processing Options:**
@@ -1529,6 +1529,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
 
