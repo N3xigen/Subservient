@@ -523,7 +523,7 @@ services:
 | **api_key** | OpenSubtitles consumer API key from API Consumers section | `your_api_key_here` | ✅ |
 | **username** | Your OpenSubtitles account username | `your_username` | ✅ |
 | **password** | Your OpenSubtitles account password | `your_password` | ✅ |
-| **api_url** | OpenSubtitles API endpoint (only change if API URL changes) | `https://api.opensubtitles.com/api/v1` | - |
+| **api_url** | OpenSubtitles API endpoint (should already be filled in) | `https://api.opensubtitles.com/api/v1` | ✅ |
 
 <br>
 
@@ -1530,6 +1530,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
 
