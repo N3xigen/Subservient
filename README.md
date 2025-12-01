@@ -23,8 +23,9 @@
 > **🎯 Automated subtitle synchronization for your video collection**
 > 
 > Transform your viewing experience with perfectly synchronized subtitles in multiple languages.
->Subservient automatically extracts, downloads, and syncs subtitle files using advanced audio analysis, eliminating the frustration of out-of-sync dialogue.
-> Unlike comprehensive media management systems like Bazarr or Sonarr, Subservient is a focused, standalone application dedicated specifically to subtitle synchronization.<br>Simply point it at your video files, and it handles the technical complexity while giving you control over the results.
+> Subservient automatically extracts, downloads, and syncs subtitle files using advanced audio analysis, eliminating the frustration of out-of-sync dialogue.
+> Unlike comprehensive media management systems like Bazarr or Sonarr, Subservient is a focused, standalone application dedicated specifically to subtitle synchronization.<
+> Simply point it at your video files, and it handles the technical complexity while giving you control over the results.
 
 ### 🔄 Core Workflow
 **Extract** → **Download** → **Synchronize** → **Verify**
@@ -1529,6 +1530,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 </div>
 
 ---
+
 
 
 
