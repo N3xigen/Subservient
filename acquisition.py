@@ -38,6 +38,7 @@ from colorama import Fore, Style
 import datetime
 from platformdirs import user_config_dir
 from utils import ASCII_ART, clear_and_print_ascii, get_skip_dirs_from_config
+from opensubtitles_hash import calculate_hash
 SNAPSHOT_DIR = Path(__file__).parent.resolve()
 BANNER_LINE = f"                   {Style.BRIGHT}{Fore.RED}[Phase 3/4]{Style.RESET_ALL} Subtitle Acquisition"
 CONFIG_PATH = SNAPSHOT_DIR / '.config'
@@ -180,6 +181,7 @@ MAX_SEARCH_RESULTS = int(setup.get('max_search_results', 50))
 TOP_DOWNLOADS = int(setup['top_downloads'])
 DOWNLOAD_RETRY_503 = int(setup.get('download_retry_503', 6))
 SERIES_MODE = setup['series_mode']
+USE_MOVIE_HASH = setup.get('use_movie_hash', 'true').lower() in ('true', '1', 'yes', 'on')
 
 def write_runtime_blocks_to_config(token=None, skipped_entries=None):
     """Write runtime configuration blocks to config file."""
@@ -963,21 +965,57 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 print_and_log(f"{acq_tag()} {Fore.YELLOW}No DRIFT files remaining for {lang.upper()} (already processed or marked as FAILED). Skipping.{Style.RESET_ALL}")
                 continue
             display_query = query
-            params = {
-                "query": query,
-                "languages": lang
-            }
-            print_and_log(f"\n{acq_tag()} {Fore.CYAN}Search query for {lang.upper()}: '{display_query}'{Style.RESET_ALL}")
             headers = {
                 "Authorization": f"Bearer {jwt_token}",
                 "User-Agent": "NexigenSubtitleBot v1.0",
                 "Api-Key": API_KEY
             }
-            response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params)
-            time.sleep(0.5)
+
+            # Try hash-based search first if enabled
+            response = None
+            results = []
+            if USE_MOVIE_HASH:
+                try:
+                    movie_hash = calculate_hash(movie_path)
+                    file_size = movie_path.stat().st_size
+                    params_hash = {
+                        "moviehash": movie_hash,
+                        "moviebytesize": str(file_size),
+                        "languages": lang
+                    }
+                    print_and_log(f"\n{acq_tag()} {Fore.LIGHTMAGENTA_EX}[HASH SEARCH] Searching by movie hash for {lang.upper()}: {movie_hash}{Style.RESET_ALL}")
+                    response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_hash)
+                    time.sleep(0.5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        hash_results = data.get("data", [])
+                        if hash_results:
+                            print_and_log(f"{acq_tag()} {Fore.GREEN}[HASH MATCH] Found {len(hash_results)} hash-matched subtitle(s) for {lang.upper()}!{Style.RESET_ALL}")
+                            results = hash_results
+                        else:
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] No hash matches, falling back to text search{Style.RESET_ALL}")
+                            response = None
+                    else:
+                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash search failed (HTTP {response.status_code}), falling back to text search{Style.RESET_ALL}")
+                        response = None
+                except Exception as e:
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash calculation failed ({str(e)}), falling back to text search{Style.RESET_ALL}")
+                    response = None
+
+            # Fallback to text-based search if hash search disabled or failed
+            if not response or response.status_code != 200:
+                params = {
+                    "query": query,
+                    "languages": lang
+                }
+                print_and_log(f"\n{acq_tag()} {Fore.CYAN}Search query for {lang.upper()}: '{display_query}'{Style.RESET_ALL}")
+                response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params)
+                time.sleep(0.5)
+
             if response.status_code == 200:
-                data = response.json()
-                results = data.get("data", [])
+                if not results:  # Only get results if not already retrieved from hash search
+                    data = response.json()
+                    results = data.get("data", [])
                 filtered_results = filter_subtitles_by_query(results, query)
                 top_results = sorted(filtered_results, key=lambda r: r['attributes'].get('download_count', 0), reverse=True)[:MAX_SEARCH_RESULTS]
                 header = f"\n{acq_tag()} Top {len(top_results)} subtitles ({lang.upper()}):"
@@ -1030,21 +1068,57 @@ def search_subtitles(movie_path: Path, jwt_token: str):
 
     for lang in missing_langs:
         display_query = query
-        params = {
-            "query": query,
-            "languages": lang
-        }
-        print_and_log(f"\n{acq_tag()} * Search query for language '{lang}': '{display_query}'")
         headers = {
             "Authorization": f"Bearer {jwt_token}",
             "User-Agent": "NexigenSubtitleBot v1.0",
             "Api-Key": API_KEY
         }
-        response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params)
-        time.sleep(0.5)
+
+        # Try hash-based search first if enabled
+        response = None
+        results = []
+        if USE_MOVIE_HASH:
+            try:
+                movie_hash = calculate_hash(movie_path)
+                file_size = movie_path.stat().st_size
+                params_hash = {
+                    "moviehash": movie_hash,
+                    "moviebytesize": str(file_size),
+                    "languages": lang
+                }
+                print_and_log(f"\n{acq_tag()} {Fore.LIGHTMAGENTA_EX}[HASH SEARCH] Searching by movie hash for {lang.upper()}: {movie_hash}{Style.RESET_ALL}")
+                response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_hash)
+                time.sleep(0.5)
+                if response.status_code == 200:
+                    data = response.json()
+                    hash_results = data.get("data", [])
+                    if hash_results:
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}[HASH MATCH] Found {len(hash_results)} hash-matched subtitle(s) for {lang.upper()}!{Style.RESET_ALL}")
+                        results = hash_results
+                    else:
+                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] No hash matches, falling back to text search{Style.RESET_ALL}")
+                        response = None
+                else:
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash search failed (HTTP {response.status_code}), falling back to text search{Style.RESET_ALL}")
+                    response = None
+            except Exception as e:
+                print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash calculation failed ({str(e)}), falling back to text search{Style.RESET_ALL}")
+                response = None
+
+        # Fallback to text-based search if hash search disabled or failed
+        if not response or response.status_code != 200:
+            params = {
+                "query": query,
+                "languages": lang
+            }
+            print_and_log(f"\n{acq_tag()} * Search query for language '{lang}': '{display_query}'")
+            response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params)
+            time.sleep(0.5)
+
         if response.status_code == 200:
-            data = response.json()
-            results = data.get("data", [])
+            if not results:  # Only get results if not already retrieved from hash search
+                data = response.json()
+                results = data.get("data", [])
             filtered_results = filter_subtitles_by_query(results, query)
             existing_counts, total_existing = count_existing_subtitles(movie_path, lang)
             filtered_results = [r for r in filtered_results if r['attributes'].get('download_count', 0) not in existing_counts]
