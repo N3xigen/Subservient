@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.88-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
@@ -49,7 +49,7 @@
 | Strategy | Approach | Performance |
 |----------|----------|-------------|
 | **🚀 First Match** | Uses first successful sync | Quick processing, good results |
-| **🎯 Smart Sync** | Tests all candidates, picks best | Slower but highest quality sync |
+| **🎯 Smart Sync** | Tests all newly downloaded subtitles, picks the best synced one | Slower but highest quality sync |
 
 ### 💡 Built for Real-World Use
 
@@ -75,12 +75,22 @@
 
 ## 🔧 INSTALLING AND CONFIGURING SUBSERVIENT
 
-Subservient offers two installation methods, each with distinct advantages:
+> **🚀 Quick Start Guide - New to Subservient?**
+>
+> 1. **Install first** - Follow the installation steps below (or watch the video guide)
+> 2. **Read the documentation** - Take time to understand how Subservient works and what it can do
+> 3. **Configure your settings** - Review the `.config` file thoroughly - this controls everything Subservient does
+> 4. **Need help?** Ask questions on [GitHub](https://github.com/N3xigen/Subservient/discussions) or [Buy Me a Coffee](https://buymeacoffee.com/nexigen)
+>
+> Subservient works out of the box with sensible defaults, but proper configuration is key to making it work exactly how you want it to.
+
+
+<b>Subservient offers two installation methods, each with distinct advantages:</b>
 
 ### 🖥️ **Native Python Installation** (Recommended for Performance)
 > **Best for:** Windows, macOS, and Linux users who want maximum performance
 - **✅ Advantages:** Uses 100% of your system resources, faster processing, native OS integration
-- **⚠️ Complexity:** Requires Python setup and dependency management
+- **⚠️ Complexity:** Requires multiple applications to be installed and might need manual PATH configurations. More complex.
 
 ### 🐳 **Docker Container Installation** 
 > **Best for:** Unraid, Linux servers, and users who prefer containerized applications
@@ -210,16 +220,16 @@ Subservient stores the anchor and file locations in a user-specific config file:
 - Press Enter (if you haven't already) to proceed from the initial setup to the main menu.
 - The menu options are:
 
-| Option | Description | Icon |
-|--------|-------------|------|
-| **1** | Start Subservient | 🚀 Begin the subtitle automation process |
-| **2** | Scan subtitle coverage | 📊 Analyze existing subtitle files in current directory |
-| **3** | Show quick instructions | 📋 View a concise guide to using Subservient |
-| **4** | Install & verify requirements | 🔧 Install and verify all Python packages |
-| **5** | Extra tools | 🛠️ Access Subtitle Cleaner and additional subtitle utilities |
-| **6** | Recreate .config file | ⚙️ Generate a new configuration file if needed |
-| **7** | Open README file | 📖 Open this documentation |
-| **8** | Exit | 🚪 Close the program |
+| Option | Description |
+|--------|-------------|
+| **1** | Start Subservient - Begin the subtitle automation process |
+| **2** | Scan subtitle coverage - Analyze existing subtitle files in current directory |
+| **3** | Show quick instructions - View a concise guide to using Subservient |
+| **4** | Install & verify requirements - Install and verify all Python packages |
+| **5** | Extra tools - Access Subtitle Cleaner and additional subtitle utilities |
+| **6** | Recreate .config file - Generate a new configuration file if needed |
+| **7** | Open README file - Open this documentation |
+| **8** | Exit - Close the program |
 
 <br>
 <details>
@@ -476,9 +486,9 @@ services:
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Configuration (after installing)
 
-> **🔧 Unified Configuration System**
+> **🔧 Unified Configuration System** 
 > 
 > Both installation methods use the same `.config` file for all settings. Configure your OpenSubtitles credentials, processing preferences, and subtitle languages in one place that works for both native Python and Docker versions.<br>
 >
@@ -510,7 +520,7 @@ services:
 
 > 💡 **VIP Recommendation**
 > 
-> **VIP membership** is a paid upgrade that increases your daily download limit to 1000.<br>This is recommended if you plan to use Subservient substantially. You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
+> **VIP membership** is a paid upgrade that increases your daily download limit to 1000.<br>This is recommended if you plan to use Subservient substantially and want the highest sync quality (large subtitle batches, smart sync etc).<br>You can purchase VIP membership here: [https://www.opensubtitles.com/en/vip](https://www.opensubtitles.com/en/vip).
 
 <br>
 
@@ -694,6 +704,62 @@ services:
 </details>
 
 <details>
+<summary><strong>🔄 DRIFT Recovery System</strong> - Automatic subtitle retry when synchronization fails</summary>
+
+### 🚀 What DRIFT Recovery Does
+
+**DRIFT Recovery** is Subservient's intelligent fallback system that automatically handles subtitle synchronization failures by downloading alternative candidates:
+
+#### 🔍 **How It Works**
+
+1. **Failure Detection**: When a subtitle fails synchronization (offset > `reject_offset_threshold`)
+2. **DRIFT Marking**: Failed subtitle is renamed with `.DRIFT.srt` suffix (e.g., `16676.nl.number1.S01E08.DRIFT.srt`)
+3. **Automatic Re-Acquisition**: `acquisition.py` automatically restarts to download new candidates
+4. **Smart Index Tracking**: System remembers which subtitle indices were already tried and excludes them
+5. **Fresh Attempts**: Downloads next-best subtitles from OpenSubtitles ranking
+
+#### 📊 **DRIFT Marking Scenarios**
+
+| Scenario | Action | Next Step |
+|----------|--------|-----------|
+| Sync offset too high | Automatic DRIFT marking | Re-acquisition starts |
+| Manual marking | User selects "Mark as DRIFT" during verification | Re-acquisition starts |
+| Multiple failures | Each failed attempt tracked separately | Tries remaining indices |
+
+#### 🎯 **Index Tracking Logic**
+
+Subservient maintains a record of already-tried subtitle indices to prevent re-downloading the same failed subtitles:
+
+```
+First attempt:  Downloads indices [1, 2, 3]
+After DRIFT:    Index 1 marked as tried
+Second attempt: Downloads indices [2, 3, 4]  ← Skips 1
+After DRIFT:    Indices 1, 2 marked as tried
+Third attempt:  Downloads indices [3, 4, 5]  ← Skips 1 & 2
+```
+
+#### 🔧 **DRIFT File Management**
+
+- **During Processing**: DRIFT files remain to track failed attempts
+- **After Success**: All DRIFT files automatically cleaned up when valid subtitle found
+- **Manual Cleanup**: DRIFT files removed at end of synchronization phase
+
+#### ⚙️ **Configuration Impact**
+
+| Setting | Effect on DRIFT Recovery |
+|---------|--------------------------|  
+| reject_offset_threshold | Higher value = fewer DRIFT markings, more lenient acceptance |
+| top_downloads | More downloads = more candidates before DRIFT retry needed |
+| smart_sync | Tests all candidates before DRIFT, reduces unnecessary retries |#### 💡 **Best Practices**
+
+- **Let it run**: DRIFT recovery is automatic - no manual intervention needed
+- **Check logs**: DRIFT markings appear in synchronization logs for troubleshooting
+- **Adjust thresholds**: If too many DRIFTs occur, consider relaxing `reject_offset_threshold`
+- **Use Smart Sync**: Reduces DRIFT frequency by testing all candidates first
+
+</details>
+
+<details>
 <summary>🎯 <strong>Subtitle Preservation Logic</strong> - Advanced track management settings</summary>
 
 **🎮 Smart Preservation System**: Control exactly what subtitle content gets preserved during processing:
@@ -737,6 +803,148 @@ Use ISO 639-1 codes in `.config` (e.g., `en`, `nl`, `fr`):
 </details>
 
 </details>
+
+<br>
+
+## 🎁 OpenSubtitles Season Map Download Feature
+
+> **💾 Bulk Download Subtitles from OpenSubtitles Website (VIP Feature)**
+> 
+> **⚠️ Requires OpenSubtitles VIP membership** - This feature uses the bulk season download capability available only to VIP members.
+>
+> Save massive amounts of API quota by manually downloading entire seasons at once from the OpenSubtitles website. Instead of using the API to download 2-5 subtitles per batch for each episode, download all available subtitles for an entire season in one go (often 100+ subtitles for a 20-episode season). Organize them in a special folder structure, and Subservient will automatically extract, test, and sync the best subtitle for each episode.
+
+### 📋 How It Works
+
+1. **📥 Manual Download**: Visit OpenSubtitles website, download complete season subtitle packs
+2. **📁 Organize**: Place downloaded subtitles in specially-named folders
+3. **🔍 Extraction**: Subservient extracts and matches subtitles to episodes automatically
+4. **🎯 Smart Testing**: Tests all candidates with Smart Sync, picks best quality
+5. **🔄 Fallback**: If all fail, automatically downloads from OpenSubtitles API
+
+### 📺 Setting Up Season Subtitle Folders
+
+Place subtitle folders directly in your season folder alongside video files:
+
+#### 📁 **Required Folder Structure**
+
+```
+/Breaking Bad/Season 1/
+├── SUBTITLES.S01.EN.zip         ← English Season subtitles folder
+├── SUBTITLES.S01.NL.zip         ← Dutch Season subtitles folder
+├── Breaking.Bad.S01E01.mkv
+├── Breaking.Bad.S01E02.mkv
+└── Breaking.Bad.S01E03.mkv
+```
+
+#### 🏷️ **Folder Naming Convention**
+
+| Component | Format | Example | Required |
+|-----------|--------|---------|----------|
+| Prefix | `SUBTITLES` | Exactly this word | Yes |
+| Season | `.S##` | `.S01`, `.S02`, `.S10` | Yes (2 digits) |
+| Language | `.LANG` | `.EN`, `.NL`, `.FR` | Yes (2-letter, UPPERCASE) |
+| Extension | `.zip` | Must be a folder | Yes |
+
+**✅ Valid Examples:**
+- `SUBTITLES.S01.EN.zip`
+- `SUBTITLES.S02.NL.zip`
+- `SUBTITLES.S10.JA.zip`
+
+**❌ Invalid Examples:**
+- `Subtitles.S01.EN.zip` ❌ Wrong capitalization
+- `SUBTITLES.S1.EN.zip` ❌ Season must be 2 digits
+- `SUBTITLES.S01.en.zip` ❌ Language must be UPPERCASE
+
+#### 📂 **Inside the Folder**
+
+Your downloaded subtitle files from OpenSubtitles website can be organized in two ways:
+
+**Option 1: Flat structure (all files directly in folder)**
+```
+SUBTITLES.S01.EN.zip/
+├── Breaking.Bad.S01E01.subtitle1.srt
+├── Breaking.Bad.S01E01.subtitle2.srt
+├── Breaking.Bad.S01E02.subtitle1.srt
+└── ... (all subtitles)
+```
+
+**Option 2: Episode subfolders (common for subtitle packs)**
+```
+SUBTITLES.S01.EN.zip/
+├── Episode 1/
+│   ├── subtitle1.srt
+│   └── subtitle2.srt
+├── Episode 2/
+│   ├── subtitle1.srt
+│   └── subtitle2.srt
+└── ... (more episode folders)
+```
+
+**What Subservient does automatically:**
+- ✅ Scans folder recursively (finds files in subfolders too)
+- ✅ Matches subtitles to episodes using SxxExx pattern recognition
+- ✅ Extracts and renames them to P-prefix format (`P100.nl.number1.S01E08.srt`)
+- ✅ Tests all candidates per episode and picks the best sync
+
+**You just need to:**
+- ✅ Download subtitle pack from OpenSubtitles website
+- ✅ Create correctly-named folder (`SUBTITLES.S##.LANG.zip`)
+- ✅ Place the folder in your season directory (any internal structure works)
+- ✅ Run Subservient - it handles the rest automatically
+
+### ⚙️ How Subservient Processes These Folders
+
+#### **1️⃣ Detection Phase**
+- Scans season folder for `SUBTITLES.S##.LANG.zip` folders
+- Validates folder naming conventions
+- Matches languages with your `.config` settings
+
+#### **2️⃣ Extraction Phase**
+- Extracts subtitles based on SxxExx pattern matching
+- Renames to P-prefix format: `P100.nl.number1.S01E08.srt`, `P200.nl.number2.S01E08.srt`
+- P-prefix marks them as pre-downloaded (separate from API downloads)
+
+#### **3️⃣ Synchronization Phase**
+- Tests all P-prefix candidates with Smart Sync
+- Picks best synchronized subtitle for each episode
+- If all fail → Triggers DRIFT recovery → Downloads from OpenSubtitles API
+
+#### **4️⃣ Fallback System**
+- Failed P-prefix subtitles marked as `.DRIFT.srt`
+- System automatically switches to OpenSubtitles API
+- Downloads fresh candidates with normal numbering: `16676.nl.number1.S01E08.srt`
+
+### 💡 Why Use This Feature?
+
+| Benefit | Description |
+|---------|-------------|
+| 💰 **Massive Quota Savings** | Download 80+ subtitles at once instead of 2-3 per episode via API |
+| 🚀 **Faster Processing** | No API rate limits, immediate availability for all episodes |
+| 🎯 **More Choices** | Access to ALL subtitles on OpenSubtitles, not just top-rated |
+| 🔄 **Smart Fallback** | Automatically uses API if pre-downloaded subtitles fail |
+
+### 📊 P-Prefix Numbering System
+
+Pre-downloaded subtitles use special numbering to distinguish them from API downloads:
+
+| Source | Numbering | Example |
+|--------|-----------|---------|
+| **Pre-downloaded** | P100, P200, P300 | `P100.nl.number1.S01E08.srt` |
+| **OpenSubtitles API** | 16676, 837, etc. | `16676.nl.number1.S01E08.srt` |
+
+**Why separate numbering?**
+- Tracks which source failed during DRIFT recovery
+- Prevents confusion between subtitle sources  
+- Smart DRIFT recovery ignores P-prefix failures when switching to API downloads
+
+### ⚠️ Important Notes
+
+- 👑 **VIP membership required** - Bulk season downloads are only available to OpenSubtitles VIP members
+- ⚠️ **TV Series only** - This feature is not supported for movies
+- ⚠️ **Manual download required** - You must download subtitle packs from OpenSubtitles website yourself
+- ⚠️ **Folder naming critical** - Must follow exact naming convention or folders won't be detected
+- ✅ **Enable Smart Sync** - Recommended to test all candidates and pick best quality (`smart_sync=true`)
 
 <br>
 
@@ -1386,6 +1594,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🚀 **2026-01-26** | v0.89 | Season Maps & DRIFT Recovery | Pre-downloaded subtitle support (Season Maps) and automatic DRIFT recovery system |
 | 🚀 **2025-11-30** | v0.88 | Smart Sync & Series Enhancement | Smart Sync mode for optimal subtitle selection and enhanced TV-Series functionality |
 | 🌐 **2025-11-23** | v0.87 | Early TV-Series Support | TV-Series mode with basic SxxExx detection and episode processing |
 | 🐳 **2025-08-04** | v0.85 | Docker Support | Full Docker containerization with docker-compose support and Unraid compatibility! |
@@ -1395,7 +1604,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 | 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Public alpha release |
 | 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.88** - New features: Smart Sync mode for better subtitle quality and enhanced TV-Series support!
+> 🎉 **Current Version: v0.89** - New features: Pre-downloaded subtitle support (Season Maps) and DRIFT recovery system!
 
 <br>
 
@@ -1514,7 +1723,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.88-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)

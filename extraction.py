@@ -113,23 +113,14 @@ if CONFIG_PATH.exists():
                         PAUSE_SECONDS = float(value.strip())
                     except Exception:
                         pass
+    # Read the current run_counter but DON'T increment it (subordinate.py already did)
+    # Only subordinate.py should increment the run_counter, all other scripts use current value
     if run_counter_line_idx is not None and RUN_COUNTER is not None:
-        RUN_COUNTER += 1
-        lines[run_counter_line_idx] = f"run_counter= {RUN_COUNTER}"
-        try:
-            CONFIG_PATH.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-        except PermissionError:
-            fixed_items = fix_permissions_proactively(CONFIG_PATH)
-            if fixed_items:
-                try:
-                    CONFIG_PATH.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-                    print(f"Info: Fixed permissions and updated run counter in config file")
-                except Exception:
-                    print(f"Warning: Could not update run counter in config file (permission denied)")
-            else:
-                print(f"Warning: Could not update run counter in config file (permission denied)")
-        except Exception as e:
-            print(f"Warning: Could not update run counter in config file: {str(e)}")
+        # Don't increment - just use the current value set by subordinate.py
+        pass
+    else:
+        # Fallback if run_counter not found
+        RUN_COUNTER = 1
 LOGS_DIR = SNAPSHOT_DIR / 'logs' / f'Subservient-run-{RUN_COUNTER}'
 try:
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -334,6 +325,23 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     extracted_files = []
     deleted_files = []
     forced_vobsub_to_remove = []  # Initialize early to avoid UnboundLocalError
+    
+    # Clean up any leftover .temp.mkv files from previous failed operations
+    parent_dir = file_path.parent
+    base_name = file_path.stem
+    temp_path = parent_dir / (base_name + ".temp.mkv")
+    if temp_path.exists():
+        try:
+            temp_path.unlink()
+            print_and_log(f"{ext_tag()} {Fore.YELLOW}Cleaned up leftover temp file: {temp_path.name}{Style.RESET_ALL}")
+        except Exception as e:
+            print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove leftover temp file {temp_path.name}: {str(e)}{Style.RESET_ALL}")
+    
+    # Verify the file still exists before proceeding (in case of previous processing issues)
+    if not file_path.exists():
+        print_and_log(f"{ext_tag()} {Fore.RED}Error: File not found: {file_path.name}{Style.RESET_ALL}")
+        print_and_log(f"{ext_tag()} {Fore.YELLOW}This may indicate a previous processing error or the file was moved/renamed.{Style.RESET_ALL}")
+        return
     
     if file_path.stat().st_size < 50 * 1024 * 1024:
         print_and_log(f"{ext_tag()} {Fore.YELLOW}Skipped (file too small < 50MB): {shortname(file_path)}{Style.RESET_ALL}")
@@ -985,10 +993,26 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                     sys.exit(1)
             except Exception as e:
                 print_and_log(f"{ext_tag()} {Fore.RED}Unexpected error during remux: {str(e)}{Style.RESET_ALL}")
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}The temp file '{temp_path.name}' contains your processed video.{Style.RESET_ALL}")
+                if temp_path.exists():
+                    print_and_log(f"{ext_tag()} {Fore.YELLOW}The temp file '{temp_path.name}' contains your processed video.{Style.RESET_ALL}")
                 print(f"\n{Fore.RED}Press Enter to exit...{Style.RESET_ALL}")
                 input()
                 sys.exit(1)
+            finally:
+                # Always try to clean up temp file if operation completed successfully
+                if 'temp_path' in locals() and temp_path.exists():
+                    # Check if the original file still exists, indicating remux failed
+                    if not file_path.exists():
+                        # Original was removed, temp should become the new file - don't clean up
+                        pass
+                    else:
+                        # Original still exists, something went wrong, clean up temp
+                        try:
+                            temp_path.unlink()
+                            print_and_log(f"{ext_tag()} {Fore.YELLOW}Cleaned up temporary remux file after error{Style.RESET_ALL}")
+                        except Exception as cleanup_error:
+                            print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not clean up temp file: {str(cleanup_error)}{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.YELLOW}You may need to manually remove: {temp_path.name}{Style.RESET_ALL}")
         else:
             print_and_log(f"{ext_tag()} {Fore.RED}Remux failed, temp.mkv not found.{Style.RESET_ALL}")
     else:

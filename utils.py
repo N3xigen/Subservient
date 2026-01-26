@@ -372,35 +372,42 @@ def display_coverage_results(coverage_results, languages, banner_line=None, retu
     if not sync_tag_func:
         pass
     else:
-        # Show INFO section on new screen
-        if banner_line:
-            clear_and_print_ascii(banner_line)
-        else:
-            clear_and_print_ascii("                   Subtitle Analysis Tips")
+        # Check run_counter to decide if INFO screen should be shown
+        run_counter = get_run_counter_from_config()
         
-        time.sleep(1)
-        log_func(f"\n{Style.BRIGHT}INFO:{Style.RESET_ALL} If all your movies show {Fore.GREEN}external .SRT files{Style.RESET_ALL} or you're satisfied with {Fore.YELLOW}internal subtitles{Style.RESET_ALL}, you're all set!\n")
-        
-        log_func(f"{Fore.LIGHTYELLOW_EX}However, if some movies only have internal subtitles or missing subtitles, here's what you should know:{Style.RESET_ALL}")
-        log_func(f"• Movies with long silences, background noise, or non-English dialogue can be challenging for AI synchronization.")
-        log_func(f"• The AI may incorrectly flag perfectly good subtitles as 'out of sync' (false positives).")
-        log_func("")
-        
-        log_func(f"These rare cases are easy to spot: ALL subtitles for a movie show as 'internal only' or 'missing' for ALL languages.")
-        log_func(f"When you see this pattern, it's usually the AI being overly cautious, not a real sync problem!")
-        log_func("")
-        
-        log_func(f"{Fore.LIGHTYELLOW_EX}If any movie shows only internal subtitles or missing subtitles, then delete those subtitles and:{Style.RESET_ALL}")
-        log_func(f"{Fore.CYAN}1.{Style.RESET_ALL} Run acquisition.py to download fresh subtitles")
-        log_func(f"{Fore.CYAN}2.{Style.RESET_ALL} Exit before synchronisation.py starts")
-        log_func(f"{Fore.CYAN}3.{Style.RESET_ALL} Manually check the downloaded subtitles - they're often perfectly synced already!")
-        log_func(f"{Fore.CYAN}4.{Style.RESET_ALL} Simply rename them to match your video (e.g., 'MovieName.en.srt')")
-        log_func("")
-        
-        log_func(f"{Fore.GREEN}By recognizing this pattern, even the last few rare subtitles that Subservient misinterprets won't slip past you!{Style.RESET_ALL}")
+        # Only show INFO screen on first run (run_counter < 2)
+        if run_counter < 2:
+            # Show INFO section on new screen
+            if banner_line:
+                clear_and_print_ascii(banner_line)
+            else:
+                clear_and_print_ascii("                   Subtitle Analysis Tips")
+            
+            time.sleep(1)
+            log_func(f"\n{Style.BRIGHT}INFO:{Style.RESET_ALL} If all your movies show {Fore.GREEN}external .SRT files{Style.RESET_ALL} or you're satisfied with {Fore.YELLOW}internal subtitles{Style.RESET_ALL}, you're all set!\n")
+            
+            log_func(f"{Fore.LIGHTYELLOW_EX}However, if some movies only have internal subtitles or missing subtitles, here's what you should know:{Style.RESET_ALL}")
+            log_func(f"• Movies with long silences, background noise, or non-English dialogue can be challenging for AI synchronization.")
+            log_func(f"• The AI may incorrectly flag perfectly good subtitles as 'out of sync' (false positives).")
+            log_func("")
+            
+            log_func(f"These rare cases are easy to spot: ALL subtitles for a movie show as 'internal only' or 'missing' for ALL languages.")
+            log_func(f"When you see this pattern, it's usually the AI being overly cautious, not a real sync problem!")
+            log_func("")
+            
+            log_func(f"{Fore.LIGHTYELLOW_EX}If any movie shows only internal subtitles or missing subtitles, then delete those subtitles and:{Style.RESET_ALL}")
+            log_func(f"{Fore.CYAN}1.{Style.RESET_ALL} Run acquisition.py to download fresh subtitles")
+            log_func(f"{Fore.CYAN}2.{Style.RESET_ALL} Exit before synchronisation.py starts")
+            log_func(f"{Fore.CYAN}3.{Style.RESET_ALL} Manually check the downloaded subtitles - they're often perfectly synced already!")
+            log_func(f"{Fore.CYAN}4.{Style.RESET_ALL} Simply rename them to match your video (e.g., 'MovieName.en.srt')")
+            log_func("")
+            
+            log_func(f"{Fore.GREEN}By recognizing this pattern, even the last few rare subtitles that Subservient misinterprets won't slip past you!{Style.RESET_ALL}")
+            
+            if return_to_menu:
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
     
-    if return_to_menu:
-        input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
+    # If run_counter >= 2, no INFO screen is shown and no input is needed
 
 def get_languages_from_config(config_path=None):
     """Read languages setting from config file."""
@@ -440,6 +447,27 @@ def get_series_mode_from_config(config_path=None):
         except Exception:
             pass
     return series_mode
+
+def get_run_counter_from_config(config_path=None):
+    """Read run_counter setting from config file."""
+    if config_path is None:
+        subservient_folder = get_subservient_folder()
+        config_path = subservient_folder / '.config'
+    run_counter = 0
+    if config_path and Path(config_path).exists():
+        try:
+            with open(config_path, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('run_counter='):
+                        try:
+                            run_counter = int(line.split('=', 1)[1].strip())
+                        except ValueError:
+                            run_counter = 0
+                        break
+        except Exception:
+            pass
+    return run_counter
 
 def get_skip_dirs_from_config(config_path=None):
     """Read skip_dirs setting from config file and return as lowercase set."""

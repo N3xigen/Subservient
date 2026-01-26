@@ -1,7 +1,7 @@
 import os
 import sys
 import subprocess
-import datetime
+from datetime import datetime
 import re
 from pathlib import Path
 try:
@@ -141,31 +141,7 @@ def setup_logging():
         except Exception:
             pass
     
-    # Set up snapshot directory (same as other modules)
-    snapshot_dir = anchor_path
-    
-    # Create logs directory
-    LOGS_DIR = snapshot_dir / 'logs' / f'Subservient-run-{run_counter}'
-    try:
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        LOGS_DIR = None
-        LOG_FILE = None
-        return
-    
-    # Create log file
-    log_time = datetime.now().strftime('%d-%m-%Y_%H.%M.%S')
-    LOG_FILE = LOGS_DIR / f"subordinate_preflight_{log_time}.txt"
-    
-    # Initialize log file with ASCII art
-    try:
-        with LOG_FILE.open('w', encoding='utf-8') as f:
-            f.write(strip_ansi("Subservient Pre-Flight Checklist Log") + '\n')
-            f.write('=' * 50 + '\n')
-            f.write(f"Log created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write('=' * 50 + '\n\n')
-    except Exception:
-        LOG_FILE = None
+    # Note: Logging will be initialized when user chooses to start the run
 
 def strip_ansi(text):
     """Remove ANSI color codes from text."""
@@ -190,8 +166,8 @@ def sub_tag():
 LOG_FILE = None
 LOGS_DIR = None
 
-# Set up logging when module is imported
-setup_logging()
+# Note: Logging will be set up when user confirms to start the run
+# setup_logging()
 
 def write_anchor_to_pathfile():
     """Write current directory path to Subservient pathfiles config.
@@ -1263,6 +1239,69 @@ def main():
     while True:
         choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
         if choice == "1":
+            # Initialize logging BEFORE showing checklist so print_and_log works
+            # Get main Subservient directory from pathfile
+            from platformdirs import user_config_dir
+            config_dir = Path(user_config_dir()) / "Subservient"
+            pathfile = config_dir / "Subservient_pathfiles"
+            
+            main_subservient_dir = None
+            if pathfile.exists():
+                try:
+                    with open(pathfile, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.startswith("utils_path="):
+                                utils_path = Path(line.split("=", 1)[1].strip())
+                                main_subservient_dir = utils_path.parent
+                                break
+                except Exception:
+                    pass
+            
+            # Fallback: use same directory as this script file
+            if main_subservient_dir is None:
+                current_script_dir = Path(__file__).parent.resolve()
+                if (current_script_dir / "extraction.py").exists():
+                    main_subservient_dir = current_script_dir
+                else:
+                    print("ERROR: Could not determine main Subservient directory for logging")
+                    print_full_main_menu()
+                    continue
+            
+            # Read and increment run_counter
+            main_config_path = main_subservient_dir / '.config'
+            run_counter = 1
+            
+            if main_config_path.exists():
+                try:
+                    lines = main_config_path.read_text(encoding='utf-8').splitlines()
+                    for i, line in enumerate(lines):
+                        if line.strip().lower().startswith('run_counter'):
+                            old_counter = int(line.split('=', 1)[1].strip()) if '=' in line else 1
+                            lines[i] = f"run_counter= {old_counter + 1}"
+                            run_counter = old_counter + 1
+                            break
+                    main_config_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+                except Exception:
+                    run_counter = 2
+            
+            # Initialize logging BEFORE showing checklist
+            global LOG_FILE, LOGS_DIR
+            LOGS_DIR = main_subservient_dir / 'logs' / f'Subservient-run-{run_counter}'
+            LOGS_DIR.mkdir(parents=True, exist_ok=True)
+            log_time = datetime.now().strftime('%d-%m-%Y_%H.%M.%S')
+            LOG_FILE = LOGS_DIR / f"preflight_checklist_{log_time}.txt"
+            
+            # Create log file
+            try:
+                with LOG_FILE.open('w', encoding='utf-8') as f:
+                    f.write("Subservient Pre-Flight Checklist Log\n")
+                    f.write('=' * 50 + '\n')
+                    f.write(f"Log created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write('=' * 50 + '\n\n')
+            except Exception as e:
+                print(f"WARNING: Failed to create pre-flight log file: {e}")
+                LOG_FILE = None
+            
             while True:
                 utils.clear_and_print_ascii(BANNER_LINE)
                 has_series_warning = print_subservient_checklist()
@@ -1333,7 +1372,11 @@ def main():
                                 if l.startswith("extraction_path="):
                                     extraction_path = l.split("=", 1)[1].strip()
                                     break
+                        
                         if extraction_path and Path(extraction_path).exists():
+                            print_and_log(f"User selected: 1 = Start Subservient")
+                            print_and_log("")
+                            
                             utils.clear_and_print_ascii(BANNER_LINE)
                             print_and_log(f"{Style.BRIGHT}{Fore.GREEN}[PRE-FLIGHT CHECK PASSED]{Style.RESET_ALL}")
                             print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL} Launching extraction.py at: {Fore.YELLOW}{extraction_path}{Style.RESET_ALL}")
@@ -1345,6 +1388,7 @@ def main():
                             print_and_log(f"{Fore.RED}[ERROR]{Style.RESET_ALL} Could not find extraction.py path in the universal pathfile or the file does not exist.")
                         return
                     elif start_choice == "2":
+                        print_and_log(f"User selected: 2 = Exit to fix configuration")
                         print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting. Please complete your setup and try again.")
                         return
         elif choice == "2":

@@ -427,6 +427,192 @@ def cleanup_duplicates_in_folder(folder: str, languages):
                             except Exception as e:
                                 print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {g}: {e}{Style.RESET_ALL}")
 
+def comprehensive_cleanup_extracted_files():
+    """
+    Comprehensive cleanup of all non-synchronized subtitle files and extracted folders.
+    Removes everything that is not a proper synchronized subtitle (video_name.lang.srt).
+    """
+    print_and_log(f"{sync_tag()} {Fore.LIGHTYELLOW_EX}Comprehensive cleanup: removing all non-synchronized files...{Style.RESET_ALL}")
+    
+    total_dirs = 1
+    all_dirs = []
+    all_dirs.append(anchor_path)
+    
+    # Collect all directories to process
+    for root, dirs, files in os.walk(anchor_path):
+        dirs[:] = [d for d in dirs if d.lower() not in skip_dirs]
+        for d in dirs:
+            dir_path = os.path.join(root, d)
+            all_dirs.append(dir_path)
+            total_dirs += 1
+    
+    processed_dirs = 0
+    start_time = time.time()
+    total_removed = 0
+    total_folders_removed = 0
+    
+    def update_progress():
+        elapsed = time.time() - start_time
+        progress = processed_dirs / total_dirs if total_dirs > 0 else 0
+        bar_length = 40
+        filled_length = int(bar_length * progress)
+        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+        
+        print(f"\\r{sync_tag()} {Fore.CYAN}[{bar}]{Style.RESET_ALL} {progress*100:.1f}% ({processed_dirs}/{total_dirs}) - {elapsed:.1f}s", end='', flush=True)
+    
+    # Process root directory first
+    removed = cleanup_non_sync_files_in_folder(anchor_path)
+    total_removed += removed
+    processed_dirs += 1
+    update_progress()
+    
+    # Process all subdirectories
+    for root, dirs, files in os.walk(anchor_path):
+        dirs[:] = [d for d in dirs if d.lower() not in skip_dirs]
+        for d in dirs:
+            folder_path = os.path.join(root, d)
+            time.sleep(0.1)
+            removed = cleanup_non_sync_files_in_folder(folder_path)
+            total_removed += removed
+            processed_dirs += 1
+            update_progress()
+    
+    print()  # New line after progress bar
+    
+    # Remove episode folders and temp directories
+    folders_removed = cleanup_episode_and_temp_folders()
+    total_folders_removed += folders_removed
+    
+    if total_removed > 0 or total_folders_removed > 0:
+        print_and_log(f"{sync_tag()} {Fore.GREEN}Comprehensive cleanup complete: removed {total_removed} files and {total_folders_removed} folders{Style.RESET_ALL}")
+    else:
+        print_and_log(f"{sync_tag()} {Fore.YELLOW}Comprehensive cleanup complete: no files needed removal{Style.RESET_ALL}")
+
+def cleanup_non_sync_files_in_folder(folder: str):
+    """
+    Remove all subtitle files that are not synchronized subtitles.
+    Keeps only files matching video_name.lang.srt pattern.
+    """
+    removed_count = 0
+    try:
+        files = os.listdir(folder)
+    except Exception:
+        return removed_count
+    
+    # Get video files in this folder to determine valid synchronized subtitle names
+    video_files = [f for f in files if f.endswith(('.mkv', '.mp4'))]
+    
+    # Create set of valid synchronized subtitle names
+    valid_sync_names = set()
+    for video_file in video_files:
+        base_name = os.path.splitext(video_file)[0]
+        
+        # Extract series code if in series mode
+        sxxexx_code = None
+        if SERIES_MODE:
+            sxxexx_code = extract_sxxexx_code(video_file)
+        
+        for lang in LANGUAGES:
+            # Determine correct filename patterns based on mode and content
+            if SERIES_MODE and sxxexx_code:
+                # Series mode with SxxExx code
+                if sxxexx_code.lower() in base_name.lower():
+                    # Video already has SxxExx in name
+                    valid_sync_names.add(f"{base_name}.{lang}.srt")
+                else:
+                    # Video doesn't have SxxExx
+                    valid_sync_names.add(f"{base_name}.{sxxexx_code}.{lang}.srt")
+            else:
+                # Movie mode or series without clear SxxExx
+                valid_sync_names.add(f"{base_name}.{lang}.srt")
+    
+    # Remove any subtitle file that doesn't match synchronized pattern
+    for file in files:
+        if file.endswith('.srt'):
+            # Keep synchronized subtitles
+            if file in valid_sync_names:
+                continue
+            
+            # Keep FAILED and DRIFT files (user might want to inspect them)
+            if file.endswith(('.FAILED.srt', '.DRIFT.srt')):
+                continue
+            
+            # Remove everything else (numbered, extracted, temporary, etc.)
+            try:
+                file_path = os.path.join(folder, file)
+                os.remove(file_path)
+                print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed non-sync subtitle: {file}{Style.RESET_ALL}")
+                removed_count += 1
+            except Exception as e:
+                print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {file}: {e}{Style.RESET_ALL}")
+        
+        # Remove SUBTITLES.S##.LANG.zip files only at the END of synchronization
+        elif (file.lower().startswith('subtitles.s') and 
+              file.lower().endswith('.zip') and 
+              '.' in file):
+            try:
+                file_path = os.path.join(folder, file)
+                os.remove(file_path)
+                print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed processed SUBTITLES archive: {file}{Style.RESET_ALL}")
+                removed_count += 1
+            except Exception as e:
+                print_and_log(f"{sync_tag()} {Fore.RED}Could not remove {file}: {e}{Style.RESET_ALL}")
+    
+    return removed_count
+
+def cleanup_episode_and_temp_folders():
+    """
+    Remove episode folders and temporary extraction directories.
+    """
+    removed_count = 0
+    
+    # Walk through all directories
+    for root, dirs, files in os.walk(anchor_path, topdown=False):  # topdown=False to delete children before parents
+        dirs[:] = [d for d in dirs if d.lower() not in skip_dirs]
+        
+        for d in dirs[:]:  # Use slice copy since we'll be modifying the list
+            folder_path = os.path.join(root, d)
+            folder_name_lower = d.lower()
+            
+            # Remove episode folders (episode 1, episode 01, etc.)
+            if re.match(r'episode\\s*\\d+', folder_name_lower):
+                try:
+                    import shutil
+                    shutil.rmtree(folder_path)
+                    print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed episode folder: {d}{Style.RESET_ALL}")
+                    dirs.remove(d)  # Remove from dirs list so os.walk doesn't try to descend into it
+                    removed_count += 1
+                except Exception as e:
+                    print_and_log(f"{sync_tag()} {Fore.RED}Could not remove episode folder {d}: {e}{Style.RESET_ALL}")
+            
+            # Remove temp extraction directories
+            elif folder_name_lower.startswith('temp_extract_'):
+                try:
+                    import shutil
+                    shutil.rmtree(folder_path)
+                    print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed temp folder: {d}{Style.RESET_ALL}")
+                    dirs.remove(d)
+                    removed_count += 1
+                except Exception as e:
+                    print_and_log(f"{sync_tag()} {Fore.RED}Could not remove temp folder {d}: {e}{Style.RESET_ALL}")
+            
+            # Remove empty SUBTITLES.S##.LANG folders (keep ZIP files)
+            elif (folder_name_lower.startswith('subtitles.s') and 
+                  '.' in folder_name_lower and 
+                  not folder_name_lower.endswith('.zip')):
+                try:
+                    # Check if folder is empty or only contains files we don't need
+                    folder_files = os.listdir(folder_path)
+                    if not folder_files:  # Empty folder
+                        os.rmdir(folder_path)
+                        print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed empty SUBTITLES folder: {d}{Style.RESET_ALL}")
+                        dirs.remove(d)
+                        removed_count += 1
+                except Exception as e:
+                    print_and_log(f"{sync_tag()} {Fore.RED}Could not remove SUBTITLES folder {d}: {e}{Style.RESET_ALL}")
+    
+    return removed_count
+
 def final_cleanup_prompt_and_cleanup():
     """Perform final cleanup of duplicate and redundant subtitle files."""
     print_and_log(f"{sync_tag()} {Fore.LIGHTYELLOW_EX}Final cleanup: removing duplicate/redundant subtitles...{Style.RESET_ALL}")
@@ -1446,12 +1632,98 @@ def show_offset_verification_menu():
 
 def open_video_with_default_app(path):
     """Open video file with system default media player."""
-    if sys.platform.startswith('win'):
-        os.startfile(path)
-    elif sys.platform.startswith('darwin'):
-        subprocess.call(['open', path])
-    else:
-        subprocess.call(['xdg-open', path])
+    try:
+        if sys.platform.startswith('win'):
+            # Try different approaches on Windows
+            try:
+                # First try the standard way
+                os.startfile(path)
+            except OSError as e:
+                # If standard way fails, try with cmd /c start
+                if "No application is associated" in str(e):
+                    # Try to find and use a specific media player
+                    import shutil
+                    vlc_path = shutil.which("vlc")
+                    if vlc_path:
+                        subprocess.run([vlc_path, path], check=False)
+                    else:
+                        # Fallback to cmd start
+                        subprocess.run(['cmd', '/c', 'start', '', path], check=False, shell=True)
+                else:
+                    raise
+        elif sys.platform.startswith('darwin'):
+            subprocess.call(['open', path])
+        else:
+            subprocess.call(['xdg-open', path])
+    except Exception as e:
+        # Re-raise with more detailed error info
+        raise Exception(f"Failed to open video: {str(e)}")
+
+def validate_and_update_offset_file_paths():
+    """Validate paths in offset file and update if videos moved to new locations."""
+    offset_file = os.path.join(script_dir, 'movies_with_linear_offset.txt')
+    if not os.path.exists(offset_file):
+        return
+    
+    with open(offset_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    entries = content.split('\n--\n')
+    header = entries[0]
+    valid_entries = []
+    updates_made = False
+    
+    for entry_text in entries[1:]:
+        if not entry_text.strip():
+            continue
+            
+        lines = entry_text.strip().split('\n')
+        if len(lines) < 4:
+            continue
+            
+        title = lines[0]
+        folder = lines[1] 
+        video = lines[2]
+        video_path = os.path.join(folder, video)
+        
+        # Check if video still exists at recorded location
+        if os.path.exists(video_path):
+            valid_entries.append(entry_text)
+            continue
+            
+        # Video not found, try to find it in current folder structure
+        print_and_log(f"{sync_tag()} {Fore.YELLOW}Video moved: searching for {video}{Style.RESET_ALL}")
+        
+        found = False
+        for root, dirs, files in os.walk(anchor_path):
+            if video in files:
+                new_folder = root
+                new_video_path = os.path.join(new_folder, video)
+                
+                # Update the entry with new path
+                lines[1] = new_folder
+                updated_entry = '\n'.join(lines)
+                valid_entries.append(updated_entry)
+                
+                print_and_log(f"{sync_tag()} {Fore.GREEN}Found video at new location: {new_folder}{Style.RESET_ALL}")
+                updates_made = True
+                found = True
+                break
+        
+        if not found:
+            print_and_log(f"{sync_tag()} {Fore.RED}Video not found anywhere, removing from verification list: {video}{Style.RESET_ALL}")
+    
+    # Rewrite file if updates were made or entries were removed
+    if updates_made or len(valid_entries) != len(entries[1:]):
+        if valid_entries:
+            new_content = header + '\n--\n' + '\n--\n'.join(valid_entries) + '\n--\n'
+            with open(offset_file, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            print_and_log(f"{sync_tag()} {Fore.CYAN}Updated offset file with new video locations{Style.RESET_ALL}")
+        else:
+            # No valid entries left, remove the file
+            os.remove(offset_file)
+            print_and_log(f"{sync_tag()} {Fore.YELLOW}No valid videos found, removed offset verification file{Style.RESET_ALL}")
 
 def remove_completed_entry_from_offset_file(title, folder, video):
     """Remove verified entry from offset tracking file."""
@@ -1516,6 +1788,9 @@ def remove_completed_entry_from_offset_file(title, folder, video):
 
 def show_offset_verification_details():
     """Process offset verification entries and prompt user for each video."""
+    # First validate and update paths in case videos were moved
+    validate_and_update_offset_file_paths()
+    
     offset_file = os.path.join(script_dir, 'movies_with_linear_offset.txt')
     if not os.path.exists(offset_file):
         print_and_log(f"{Fore.LIGHTRED_EX}No offset verification file found!{Style.RESET_ALL}")
@@ -1582,10 +1857,17 @@ def show_offset_verification_details():
                     try:
                         open_video_with_default_app(video_path)
                         vlc_opened = True
-                    except Exception:
+                    except Exception as e:
                         print_and_log(f"{Fore.LIGHTRED_EX}Could not automatically open the video..{Style.RESET_ALL}")
+                        print_and_log(f"{Fore.YELLOW}Error details: {str(e)}{Style.RESET_ALL}")
                         print_and_log(f"{Fore.LIGHTYELLOW_EX}Please open the video file manually, using the path below.{Style.RESET_ALL}")
                         print_and_log(f"{Fore.CYAN}{video_path}{Style.RESET_ALL}")
+                        
+                        # Try to provide helpful suggestions
+                        if "No application is associated" in str(e):
+                            print_and_log(f"{Fore.YELLOW}Tip: Install a media player like VLC and set it as default for .mkv files{Style.RESET_ALL}")
+                        elif "cannot find the file specified" in str(e).lower():
+                            print_and_log(f"{Fore.YELLOW}Tip: Check if the file path contains special characters or is too long{Style.RESET_ALL}")
                 else:
                     print_and_log(f"{Fore.LIGHTRED_EX}No subtitle file found for this entry!{Style.RESET_ALL}")
                 break
@@ -1826,6 +2108,9 @@ else:
 
 print_and_log(f"\n{sync_tag()} {Fore.CYAN}Performing final cleanup...{Style.RESET_ALL}")
 final_cleanup_prompt_and_cleanup()
+
+print_and_log(f"\n{sync_tag()} {Fore.CYAN}Performing comprehensive cleanup of extracted files...{Style.RESET_ALL}")
+comprehensive_cleanup_extracted_files()
 
 print_and_log(f"\n{sync_tag()} {Fore.CYAN}Performing final subtitle coverage scan...{Style.RESET_ALL}")
 coverage_results = scan_subtitle_coverage(videos, LANGUAGES, SERIES_MODE, show_progress=True, logger_func=print_and_log, sync_tag_func=sync_tag)
