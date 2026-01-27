@@ -36,6 +36,7 @@ check_required_packages()
 from pathlib import Path
 from langdetect import detect
 import datetime
+import shutil
 from colorama import init, Fore, Style
 import re
 from platformdirs import user_config_dir
@@ -55,6 +56,7 @@ EXTRAS_FOLDER_NAME = None
 AUDIO_TRACK_LANGUAGES = None
 PRESERVE_FORCED_SUBTITLES = None
 PRESERVE_UNWANTED_SUBTITLES = None
+RESYNC_MODE = None
 PAUSE_SECONDS = None
 RUN_COUNTER = None
 if CONFIG_PATH.exists():
@@ -107,6 +109,9 @@ if CONFIG_PATH.exists():
                 elif l.startswith('preserve_unwanted_subtitles') and '=' in line:
                     _, value = line.split('=', 1)
                     PRESERVE_UNWANTED_SUBTITLES = value.strip().lower() in ('true', '1', 'yes', 'on')
+                elif l.startswith('resync_mode') and '=' in line:
+                    _, value = line.split('=', 1)
+                    RESYNC_MODE = value.strip().lower() in ('true', '1', 'yes', 'on')
                 elif l.startswith('pause_seconds') and '=' in line:
                     _, value = line.split('=', 1)
                     try:
@@ -1275,6 +1280,51 @@ def process_directory(root_path):
         exit(0)
 current_folder = Path(".").resolve()
 log(f"{ext_tag()} {Fore.CYAN}Start scanning: {current_folder}{Style.RESET_ALL}")
+
+# Resync mode: move existing subtitles to backup folder
+if RESYNC_MODE:
+    log(f"\n{ext_tag()} {Fore.YELLOW}{Style.BRIGHT}╔═══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+    log(f"{ext_tag()} {Fore.YELLOW}{Style.BRIGHT}║  RESYNC MODE ACTIVE - Moving existing subtitles to backup   ║{Style.RESET_ALL}")
+    log(f"{ext_tag()} {Fore.YELLOW}{Style.BRIGHT}╚═══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+    
+    moved_count = 0
+    for root, dirs, files in os.walk(current_folder):
+        # Skip moved_subtitles folders and other skip_dirs
+        dirs[:] = [d for d in dirs if d.lower() not in ['moved_subtitles'] + [s.strip().lower() for s in get_skip_dirs_from_config()]]
+        
+        # Check if this directory contains video files
+        video_files = [f for f in files if f.lower().endswith(('.mkv', '.mp4', '.avi', '.m4v'))]
+        if not video_files:
+            continue
+        
+        # Move all subtitle files to moved_subtitles folder
+        subtitle_files = [f for f in files if f.lower().endswith(('.srt', '.ass'))]
+        if subtitle_files:
+            moved_folder = Path(root) / "moved_subtitles"
+            moved_folder.mkdir(exist_ok=True)
+            
+            for sub_file in subtitle_files:
+                try:
+                    src = Path(root) / sub_file
+                    dst = moved_folder / sub_file
+                    # If file exists in destination, add timestamp
+                    if dst.exists():
+                        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                        name, ext = os.path.splitext(sub_file)
+                        dst = moved_folder / f"{name}.backup_{timestamp}{ext}"
+                    
+                    shutil.move(str(src), str(dst))
+                    moved_count += 1
+                    log(f"{ext_tag()} {Fore.YELLOW}→ Moved: {sub_file} → moved_subtitles/{dst.name}{Style.RESET_ALL}")
+                except Exception as e:
+                    log(f"{ext_tag()} {Fore.RED}Failed to move {sub_file}: {str(e)}{Style.RESET_ALL}")
+    
+    if moved_count > 0:
+        log(f"\n{ext_tag()} {Fore.GREEN}Resync mode: {moved_count} subtitle file(s) backed up to 'moved_subtitles' folders{Style.RESET_ALL}")
+        log(f"{ext_tag()} {Fore.CYAN}Proceeding with fresh subtitle extraction and synchronization...{Style.RESET_ALL}\n")
+    else:
+        log(f"\n{ext_tag()} {Fore.YELLOW}Resync mode: No existing subtitle files found to move{Style.RESET_ALL}\n")
+
 missing_subs_list = []
 missing_file_log = LOGS_DIR / "subtitle_missing_tracks.txt"
 MOVIES_WITH_LINEAR_OFFSET_FILE = SNAPSHOT_DIR / 'movies_with_linear_offset.txt'

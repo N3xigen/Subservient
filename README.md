@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.89-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.1-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
@@ -572,6 +572,8 @@ services:
 | **reject_offset_threshold** | Auto-reject sync threshold (seconds) | `2.5` | Higher = more lenient, lower = stricter rejections |
 | **max_search_results** | Maximum subtitle search results per video | `10` | Free: ≤12, VIP: 20+ |
 | **top_downloads** | Subtitles to test per batch | `3` | Free: 2-4, VIP: 5-10 |
+| **use_movie_hash** | Enable hash-based subtitle matching | `true` | Provides exact subtitle matches for popular releases |
+| **resync_mode** | Move existing subtitles before processing | `false` | Enables clean re-synchronization runs |
 | **download_retry_503** | Retry attempts for server errors | `6` | Recommended: 6 for busy periods |
 | **pause_seconds** | Pause between processing phases | `5` | Prevents API rate limiting |
 
@@ -582,6 +584,10 @@ services:
 > **🔍 max_search_results**: More results increase chances of finding good subtitles but use more API quota. Free users should stay ≤12, VIP users can go higher.
 > 
 > **⬇️ top_downloads**: Number of subtitles tested simultaneously. Lower preserves download quota, higher speeds up processing if you have sufficient quota.
+> 
+> **🎯 use_movie_hash**: When enabled, uses OpenSubtitles movie hash algorithm for exact subtitle matching. Provides 95-99% accuracy for popular releases upon a match, but not all movies can be hash matched. Automatically falls back to text search when no hash match exists.
+> 
+> **🔄 resync_mode**: When enabled, moves all existing .srt and .ass subtitle files to a backup folder (`moved_subtitles`) before processing. Useful when you want to re-synchronize your entire collection with fresh downloads.
 > 
 > **🔄 download_retry_503**: OpenSubtitles servers can be busy. More retries increase success rate but slow processing during peak times.
 > 
@@ -756,6 +762,103 @@ Third attempt:  Downloads indices [3, 4, 5]  ← Skips 1 & 2
 - **Check logs**: DRIFT markings appear in synchronization logs for troubleshooting
 - **Adjust thresholds**: If too many DRIFTs occur, consider relaxing `reject_offset_threshold`
 - **Use Smart Sync**: Reduces DRIFT frequency by testing all candidates first
+
+</details>
+
+<details>
+<summary><strong>🎯 Hash-Based Subtitle Matching</strong> - Exact subtitle matching using video fingerprints</summary>
+
+### 🚀 What Hash Matching Does
+
+**Hash Matching** (`use_movie_hash=true`) creates a unique fingerprint of your video file to find exact subtitle matches, improving accuracy from 60-70% to 95-99% when matches are found.
+
+> 💡 **Feature contributed by Phil Wedel ([vnakkar](https://github.com/vnakkar)) via [PR #5](https://github.com/N3xigen/Subservient/pull/5)**
+
+#### 🔍 **How It Works**
+
+Instead of searching by filename (which can vary), hash matching creates a fingerprint:
+
+```
+Hash = File size + Checksum(first 64KB) + Checksum(last 64KB)
+```
+
+**Example:**
+```
+Movie.2024.1080p.BluRay.x264.mkv → Hash: 8f7d65a4c9e2b1f3
+Movie.2024.renamed.mkv            → Hash: 8f7d65a4c9e2b1f3 (same!)
+Movie.2024.720p.WEB-DL.mkv        → Hash: 2a3b4c5d6e7f8901 (different!)
+```
+
+The hash is the same regardless of filename, but changes if the video content differs.
+
+#### ⚡ **Search Strategy**
+
+| Step | Method | When Used |
+|------|--------|-----------|
+| **1. Hash Search** | Exact video fingerprint match | First attempt (if `use_movie_hash=true`) |
+| **2. Text Search** | Filename-based search | Automatic fallback when hash fails |
+
+**Log Example:**
+```
+[HASH SEARCH] Searching by movie hash for EN: 8f7d65a4c9e2b1f3
+[HASH MATCH] Found 2 hash-matched subtitle(s) for EN!
+```
+
+#### 📊 **Accuracy Comparison**
+
+| Method | Accuracy | Coverage | Best For |
+|--------|----------|----------|----------|
+| **Hash Match** | 🟢 95-99% | 🟡 ~30% | Popular releases from known groups |
+| **Text Search** | 🟡 60-70% | 🟢 ~98% | All content, backup method |
+
+Hash matching works best for popular movies and series from well-known release groups. For older or niche content, it automatically falls back to filename-based search.
+
+</details>
+
+<details>
+<summary><strong>🔄 Resync Mode</strong> - Clean slate re-synchronization</summary>
+
+### 🚀 What Resync Mode Does
+
+**Resync Mode** (`resync_mode=true`) moves all existing subtitle files to a backup folder before processing, allowing you to start with a clean slate and re-download/re-synchronize your entire collection.
+
+#### 🔍 **How It Works**
+
+When enabled, Subservient moves existing subtitles before processing:
+
+```
+Before Resync:
+├─ Movie.mkv
+├─ Movie.en.srt  ← Existing subtitle
+└─ Movie.nl.srt  ← Existing subtitle
+
+After Resync:
+├─ Movie.mkv
+└─ moved_subtitles/
+    ├─ Movie.en.srt  ← Backed up
+    └─ Movie.nl.srt  ← Backed up
+```
+
+Subservient then downloads and synchronizes fresh subtitles as if processing the collection for the first time.
+
+#### ⚡ **When To Use Resync Mode**
+
+| Scenario | Use Resync Mode |
+|----------|----------------|
+| **Improved subtitle quality available** | ✅ Yes - Get better matches with newer database entries |
+| **Changed language preferences** | ✅ Yes - Download new languages, remove old ones |
+| **Testing different sync settings** | ✅ Yes - Compare results with fresh synchronization |
+| **Corrupted subtitle files** | ✅ Yes - Replace damaged files with clean downloads |
+| **Regular processing** | ❌ No - Keep existing subtitles and only process missing ones |
+
+#### ⚙️ **Configuration**
+
+| Setting | Effect |
+|---------|--------|
+| `resync_mode=true` | Move existing .srt/.ass files to `moved_subtitles` folder |
+| `resync_mode=false` | Keep existing subtitles, only process videos without subtitles |
+
+**Note:** The `moved_subtitles` folder is automatically excluded from processing via the `skip_dirs` setting.
 
 </details>
 
@@ -1716,6 +1819,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 - Thanks to all the contributors and open-source projects that made this software possible
 - Special thanks to the OpenSubtitles team for providing an excellent API and subtitle database
 - Special thanks to [KBlixt/subcleaner](https://github.com/KBlixt/subcleaner) for the powerful subtitle cleaning engine integrated into Subservient
+- Special thanks to [Phil Wedel (vnakkar)](https://github.com/vnakkar) for contributing the OpenSubtitles movie hash matching feature ([PR #5](https://github.com/N3xigen/Subservient/pull/5))
 - Very special thanks to all of my current and future supporters! You are simply the best and the biggest reason why I will release most of my projects free and largely open-source.
 
 <br><br><br><br>
@@ -1723,7 +1827,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.89-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.1-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)

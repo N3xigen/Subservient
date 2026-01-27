@@ -831,6 +831,9 @@ def filter_subtitles_by_query(subs, query):
         filter_words = [w.lower() for w in query.strip().split() if w]
     filtered = []
     for sub in subs:
+        # Skip subtitles without file information
+        if not sub.get('attributes', {}).get('files') or len(sub['attributes']['files']) == 0:
+            continue
         file_name = sub['attributes']['files'][0]['file_name'].lower()
         if all(word in file_name for word in filter_words):
             filtered.append(sub)
@@ -2515,10 +2518,7 @@ def get_next_sub_index(folder: Path, lang: str, mkv_path: Path = None) -> int:
                        list(folder.glob(f"*.{lang}.number*.{sxxexx_code}.DRIFT.srt")) + \
                        list(folder.glob(f"*.{lang}.number*.{sxxexx_code}.FAILED.srt"))
             
-            print_and_log(f"{acq_tag()} [DEBUG-INDEX] Checking for P-prefix files in {len(all_files)} total files")
-            
             for f in all_files:
-                print_and_log(f"{acq_tag()} [DEBUG-INDEX] Found file: {f.name}")
                 # Extract number from any of these patterns:
                 # P{id}.{lang}.number{X}.{sxxexx_code}.srt
                 # {id}.{lang}.number{X}.{sxxexx_code}.srt
@@ -2529,22 +2529,16 @@ def get_next_sub_index(folder: Path, lang: str, mkv_path: Path = None) -> int:
                     # Check if ANY P-prefix file exists (active or DRIFT/FAILED)
                     if f.name.startswith('P'):
                         has_any_p_prefix = True
-                        print_and_log(f"{acq_tag()} [DEBUG-INDEX] Found P-prefix file: {f.name}")
                         # Don't add P-prefixed numbers to normal counting
                         continue
                     indices.append(int(m.group(1)))
-                    print_and_log(f"{acq_tag()} [DEBUG-INDEX] Added non-P index: {m.group(1)}")
-            
-            print_and_log(f"{acq_tag()} [DEBUG-INDEX] has_any_p_prefix={has_any_p_prefix}, indices={indices}")
             
             # P-prefix amendment: If ANY P-prefix file exists, start downloads at 1
             # This ensures we get best quality downloads when P-files are present/removed
             if has_any_p_prefix:
-                print_and_log(f"{acq_tag()} [DEBUG-INDEX] P-prefix detected - returning index 1")
                 return 1
                     
             next_index = max(indices, default=0) + 1
-            print_and_log(f"{acq_tag()} [DEBUG-INDEX] No P-prefix - returning index {next_index}")
             return next_index
     
     # Original movie logic - count all files in folder (including DRIFT/FAILED)

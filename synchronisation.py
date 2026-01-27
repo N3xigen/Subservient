@@ -1416,17 +1416,18 @@ for idx, video in enumerate(videos, 1):
                 except:
                     pass
             
-            # Mark failed subtitles
+            # Mark as DRIFT (not FAILED) so acquisition can try next batch
             if not found_good:
                 for sub in subs_sorted:
                     if not sub.endswith('.DRIFT.srt') and not sub.endswith('.FAILED.srt'):
                         base_name = os.path.splitext(sub)[0]
-                        failed_name = f"{base_name}.FAILED{os.path.splitext(sub)[1]}"
+                        drift_name = f"{base_name}.DRIFT{os.path.splitext(sub)[1]}"
                         try:
-                            os.rename(sub, failed_name)
-                            print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as FAILED: {os.path.basename(failed_name)}{Style.RESET_ALL}")
+                            os.rename(sub, drift_name)
+                            print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as DRIFT: {os.path.basename(drift_name)}{Style.RESET_ALL}")
+                            drift_subs.append(sub)
                         except Exception as e:
-                            print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to FAILED: {str(e)}{Style.RESET_ALL}")
+                            print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to DRIFT: {str(e)}{Style.RESET_ALL}")
         
         else:
             # STANDARD MODE: First match mode (original behavior)

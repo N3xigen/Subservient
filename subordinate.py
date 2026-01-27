@@ -350,6 +350,11 @@ def print_subservient_checklist():
         print_and_log(f"  {Fore.WHITE}Subtitle downloads per batch:{Style.RESET_ALL} {subtitle_downloads}")
         print_and_log(f"  {Fore.WHITE}Extra video handling:{Style.RESET_ALL}   {delete_status}")
         print_and_log(f"  {Fore.WHITE}Subtitle delay threshold:{Style.RESET_ALL}   {Fore.LIGHTYELLOW_EX}{threshold_str}{Style.RESET_ALL}")
+        
+        # Show resync mode status
+        resync_mode = config.get('resync_mode', 'false').lower() in ('true', '1', 'yes', 'on')
+        resync_status = f"{Fore.RED}{Style.BRIGHT}ENABLED (will move existing subtitles){Style.RESET_ALL}" if resync_mode else f"{Fore.GREEN}Disabled{Style.RESET_ALL}"
+        print_and_log(f"  {Fore.WHITE}Resync mode:{Style.RESET_ALL}      {resync_status}")
     
     # Show appropriate menu based on whether there are warnings
     if has_series_warning:
