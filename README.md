@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.89.1-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.2-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
@@ -267,6 +267,22 @@ Remove advertisements, promotional content, and unwanted text from .srt files us
 2. Select "Extra tools" from the main menu (Option 5)
 3. Choose "Subtitle Cleaner" (Option 1)
 4. Select either "Clean subtitle files" or "Restore subtitle changes"
+
+#### **🗑️ Delete moved_subtitles Folders**
+Clean up backup subtitle folders created by resync_mode:
+
+- **Safety Check**: Verifies that replacement subtitles exist before deletion
+- **Language Detection**: Identifies which languages are in the backup folder
+- **Smart Confirmation**: Only prompts for confirmation when external subtitles are missing
+- **Recursive Scan**: Finds all moved_subtitles folders in your video directory structure
+
+**How to use:**
+1. Navigate to your video library folder
+2. Select "Extra tools" from the main menu (Option 5)
+3. Choose "Delete moved_subtitles folders" (Option 2)
+4. Review the safety check and confirm deletions when prompted
+
+> **⚠️ Note**: Only use this tool after you've verified that your new subtitles are properly synchronized and you no longer need the backups.
 
 </details>
 
@@ -1236,10 +1252,18 @@ Four main situations require your input:
 **Process:**
 - **Initial Verification:** For each corrected subtitle, verify if timing matches audio well enough
 - **Video Opening Options:** Automatically open video or show path for manual opening
-- **Correction Submenu:** Apply additional timing adjustments, restore original offsets, or mark as drifted
+- **Correction Menu:** Provides multiple options for handling subtitle timing and quality
 - **Automatic Handling:** If marked as DRIFT, `acquisition.py` restarts automatically to download new candidates
 
 **Purpose:** Ensures perfect synchronisation quality through manual verification when needed.
+
+**Available Menu Options:**
+1. Open video file
+2. Type in a correction (manual timing adjustment)
+3. Restore original offset
+4. Clear logs in terminal (only visual)
+5. Mark as Drift (will download a new subtitle after all videos are checked)
+6. Remove subtitle and skip this movie-language combination (adds to skipped_movies)
 
 </details>
 
@@ -1697,6 +1721,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🚀 **2026-01-28** | v0.89.2 | Tools & Options Update | Added "Delete moved_subtitles folders" cleanup tool and manual verification option 6 (skip & exclude) |
 | 🚀 **2026-01-26** | v0.89 | Season Maps & DRIFT Recovery | Pre-downloaded subtitle support (Season Maps) and automatic DRIFT recovery system |
 | 🚀 **2025-11-30** | v0.88 | Smart Sync & Series Enhancement | Smart Sync mode for optimal subtitle selection and enhanced TV-Series functionality |
 | 🌐 **2025-11-23** | v0.87 | Early TV-Series Support | TV-Series mode with basic SxxExx detection and episode processing |
@@ -1707,7 +1732,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 | 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Public alpha release |
 | 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.89** - New features: Pre-downloaded subtitle support (Season Maps) and DRIFT recovery system!
+> 🎉 **Current Version: v0.89.2** - New: moved_subtitles cleanup tool & enhanced manual verification with skip option!
 
 <br>
 
@@ -1827,7 +1852,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.89.1-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.2-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)

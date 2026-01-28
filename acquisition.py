@@ -182,6 +182,7 @@ TOP_DOWNLOADS = int(setup['top_downloads'])
 DOWNLOAD_RETRY_503 = int(setup.get('download_retry_503', 6))
 SERIES_MODE = setup['series_mode']
 USE_MOVIE_HASH = setup.get('use_movie_hash', 'true').lower() in ('true', '1', 'yes', 'on')
+LAST_RESORT_SEARCH = setup.get('last_resort_search', 'false').lower() in ('true', '1', 'yes', 'on')
 
 def detect_subtitle_folder(video_folder: Path, season_code: str, language: str):
     """
@@ -1246,6 +1247,15 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                             return
                     if not genuinely_new:
                         print_and_log(f"{acq_tag()} {Fore.YELLOW}Broader search found no genuinely new candidates for {lang.upper()}.".format(lang=lang))
+                        
+                        # Check if last resort search is enabled in config
+                        if not LAST_RESORT_SEARCH:
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}Last resort search is disabled in config. Marking DRIFT files as FAILED.{Style.RESET_ALL}")
+                            mark_drift_as_failed(movie_path.parent, lang)
+                            if not is_movie_language_skipped(movie_path, lang) and (query, movie_path, lang) not in missing_queries:
+                                missing_queries.append((query, movie_path, lang))
+                            return
+                        
                         last_resort_msg = f"Last resort search term for {lang.upper()}: '{query}'"
                         print_and_log_colored(f"{acq_tag()} {Fore.LIGHTYELLOW_EX}{last_resort_msg}{Style.RESET_ALL}")
                         print_and_log(f"{acq_tag()} {last_resort_msg}")

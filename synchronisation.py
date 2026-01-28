@@ -1,5 +1,6 @@
 import os, re, subprocess, tempfile, shutil, time, sys, stat, datetime, threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 def is_running_in_docker():
     """Check if running inside a Docker container."""
@@ -10,6 +11,113 @@ def is_running_in_docker():
             return 'docker' in f.read()
     except:
         return False
+
+def get_skipped_movies_from_config():
+    """Read skipped movies from config file."""
+    CONFIG_PATH = Path(__file__).parent.resolve() / '.config'
+    if not CONFIG_PATH.exists():
+        return {}
+    lines = CONFIG_PATH.read_text(encoding='utf-8').splitlines()
+    in_skipped = False
+    skipped = {}
+    for line in lines:
+        if line.strip() == '[skipped_movies]':
+            in_skipped = True
+            continue
+        if in_skipped:
+            if line.strip().startswith('['):
+                break
+            if line.strip():
+                entry = line.strip()
+                if '[' in entry and entry.endswith(']'):
+                    parts = entry.rsplit(' [', 1)
+                    if len(parts) == 2:
+                        movie_path = parts[0]
+                        lang_part = parts[1][:-1]
+                        languages = {lang.strip().lower() for lang in lang_part.split(',') if lang.strip()}
+                        skipped[movie_path] = languages
+    return skipped
+
+def add_skipped_movie_language_to_config(movie_path: Path, language: str):
+    """Add a movie-language combination to skipped_movies in config."""
+    CONFIG_PATH = Path(__file__).parent.resolve() / '.config'
+    skipped_movies = get_skipped_movies_from_config()
+    movie_key = str(movie_path.resolve())
+    
+    if movie_key in skipped_movies:
+        skipped_movies[movie_key].add(language.lower())
+    else:
+        skipped_movies[movie_key] = {language.lower()}
+    
+    skipped_entries = set()
+    for path, languages in skipped_movies.items():
+        if languages:
+            lang_str = ','.join(sorted(languages)).upper()
+            skipped_entries.add(f"{path} [{lang_str}]")
+    
+    # Write to config
+    write_runtime_blocks_to_config_sync(skipped_entries=skipped_entries)
+
+def write_runtime_blocks_to_config_sync(token=None, skipped_entries=None):
+    """Write runtime configuration blocks to config file."""
+    CONFIG_PATH = Path(__file__).parent.resolve() / '.config'
+    SEP = '--'
+    TOKEN_COMMENT = 'JWT token for OpenSubtitles API. Acquisition.py will update this automatically.'
+    TOKEN_TAG = '[token]'
+    SKIPPED_COMMENT = 'List of movies that were skipped manually. Remove an entry below in order to make it appear again.'
+    SKIPPED_TAG = '[skipped_movies]'
+    RUNTIME_TAG = '[RUNTIME]'
+    
+    if not CONFIG_PATH.exists():
+        lines = []
+    else:
+        lines = CONFIG_PATH.read_text(encoding='utf-8').splitlines()
+    
+    out = []
+    for line in lines:
+        out.append(line)
+        if line.strip().lower() == RUNTIME_TAG.lower():
+            break
+    
+    runtime_blocks = []
+    runtime_blocks.append('')
+    runtime_blocks.append(SEP)
+    runtime_blocks.append(TOKEN_COMMENT)
+    runtime_blocks.append(TOKEN_TAG)
+    
+    if token is None:
+        # Try to get existing token from config
+        for line in lines:
+            if line.strip() and not line.startswith('[') and not line.startswith('--') and 'JWT' not in line:
+                idx = lines.index(line)
+                if idx > 0 and '[token]' in lines[idx-1]:
+                    token = line.strip()
+                    break
+    
+    if token:
+        runtime_blocks.append(token)
+    else:
+        runtime_blocks.append('')
+    
+    if skipped_entries is None:
+        skipped_movies_dict = get_skipped_movies_from_config()
+        skipped_entries_set = set()
+        for path, languages in skipped_movies_dict.items():
+            if languages:
+                lang_str = ','.join(sorted(languages)).upper()
+                skipped_entries_set.add(f"{path} [{lang_str}]")
+        skipped_entries = skipped_entries_set
+    
+    runtime_blocks.append(SEP)
+    runtime_blocks.append(SKIPPED_COMMENT)
+    runtime_blocks.append(SKIPPED_TAG)
+    for entry in sorted(skipped_entries):
+        runtime_blocks.append(entry)
+    
+    out = [line.rstrip() for line in out]
+    out.extend(runtime_blocks)
+    
+    CONFIG_PATH.write_text('\n'.join(out), encoding='utf-8')
 
 def calculate_subtitle_offset(original_path, synchronized_path):
     """Calculate time offset between original and synchronized subtitle files."""
@@ -1922,15 +2030,15 @@ def show_offset_verification_details():
                     timestamp_val = timestamp
                 except Exception:
                     timestamp_val = "(unknown)"
-                show_manual_correction_menu(idx, len(entries), title, subtitle_name, offset_val, timestamp_val, folder, video)
+                show_manual_correction_menu(idx, len(entries), title, subtitle_name, offset_val, timestamp_val, folder, video, lang)
                 clear_and_print_ascii(BANNER_LINE)
                 break
             else:
                 print_and_log(f"{Fore.RED}Invalid choice. Please enter 1 or 2.{Style.RESET_ALL}")
 
-def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timestamp, folder, video):
+def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timestamp, folder, video, lang):
     """Display interactive menu for manual subtitle timing correction with multiple adjustment options.
-    
+
     This complex function provides a detailed interface for manually adjusting subtitle timing
     with options to apply positive/negative offsets, restore original timing, or mark as drift.
     It tracks all changes and provides video playback integration for verification.
@@ -1978,9 +2086,10 @@ def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timest
         print_and_log(f"{Fore.CYAN}3{Style.RESET_ALL} = Restore original offset {restore_str}")
         print_and_log(f"{Fore.CYAN}4{Style.RESET_ALL} = Clear logs in terminal (only visual)")
         print_and_log(f"{Fore.CYAN}5{Style.RESET_ALL} = Mark as Drift {Fore.LIGHTBLACK_EX}(will download a new subtitle after all videos are checked){Style.RESET_ALL}")
-        print_and_log(f"{Fore.CYAN}6{Style.RESET_ALL} = Done")
+        print_and_log(f"{Fore.CYAN}6{Style.RESET_ALL} = Remove subtitle and skip this movie-language combination {Fore.LIGHTBLACK_EX}(adds to skipped_movies){Style.RESET_ALL}")
+        print_and_log(f"{Fore.CYAN}7{Style.RESET_ALL} = Done")
         print()
-        choice = input(f"Choose [{Fore.CYAN}1-6{Style.RESET_ALL}]: ").strip()
+        choice = input(f"Choose [{Fore.CYAN}1-7{Style.RESET_ALL}]: ").strip()
         if choice == "1":
             video_path = os.path.join(folder, video)
             try:
@@ -2079,10 +2188,40 @@ def show_manual_correction_menu(idx, total, title, subtitle_name, offset, timest
                 else:
                     print_and_log(f"{Fore.RED}Invalid choice. Please enter y or n.{Style.RESET_ALL}")
         elif choice == "6":
+            while True:
+                confirm = input(f"{Fore.LIGHTYELLOW_EX}Are you sure you want to remove this subtitle and skip this movie-language combination? (y/n): {Style.RESET_ALL}").strip().lower()
+                if confirm == "y":
+                    # Remove the subtitle file
+                    try:
+                        if os.path.exists(sub_path):
+                            os.remove(sub_path)
+                            print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed subtitle file: {subtitle_name}{Style.RESET_ALL}")
+                        
+                        # Add to skipped_movies in config
+                        video_full_path = Path(folder) / video
+                        add_skipped_movie_language_to_config(video_full_path, lang)
+                        print_and_log(f"{sync_tag()} {Fore.MAGENTA}Added {video} [{lang.upper()}] to skipped_movies in .config{Style.RESET_ALL}")
+                        print_and_log(f"{sync_tag()} {Fore.MAGENTA}This movie-language combination will not be processed again.{Style.RESET_ALL}")
+                        
+                        # Remove from offset tracking file
+                        remove_completed_entry_from_offset_file(title, folder, video)
+                        print_and_log(f"{sync_tag()} {Fore.YELLOW}Removed offset entry from tracking file{Style.RESET_ALL}")
+                        
+                        print_and_log(f"{Fore.LIGHTGREEN_EX}Movie skipped successfully. Moving to next video.{Style.RESET_ALL}")
+                        return
+                    except Exception as e:
+                        logs.append(f"{sync_tag()} {Fore.RED}Error skipping movie: {str(e)}{Style.RESET_ALL}")
+                        break
+                elif confirm == "n":
+                    print_and_log(f"{Fore.YELLOW}Cancelled skip operation.{Style.RESET_ALL}")
+                    break
+                else:
+                    print_and_log(f"{Fore.RED}Invalid choice. Please enter y or n.{Style.RESET_ALL}")
+        elif choice == "7":
             remove_completed_entry_from_offset_file(title, folder, video)
             break
         else:
-            logs.append(f"{sync_tag()} {Fore.RED}Invalid choice. Please enter 1-6.{Style.RESET_ALL}")
+            logs.append(f"{sync_tag()} {Fore.RED}Invalid choice. Please enter 1-7.{Style.RESET_ALL}")
 
 if os.path.exists(MOVIES_WITH_LINEAR_OFFSET_FILE):
     print_and_log(f"\n{Fore.YELLOW}Manual verification file exists - some subtitles may need review{Style.RESET_ALL}")

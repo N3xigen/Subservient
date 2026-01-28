@@ -370,7 +370,10 @@ def display_coverage_results(coverage_results, languages, banner_line=None, retu
         input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
     
     if not sync_tag_func:
-        pass
+        # When called from menu (no sync_tag_func), add enter prompt to return to menu
+        if return_to_menu:
+            input(f"\n{Fore.YELLOW}Press Enter to return to the main menu...{Style.RESET_ALL} ")
+        return
     else:
         # Check run_counter to decide if INFO screen should be shown
         run_counter = get_run_counter_from_config()

@@ -425,7 +425,8 @@ def print_extra_tools_menu():
     print(f"{Fore.WHITE}Select a tool to use:{Style.RESET_ALL}\n")
     
     print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Subtitle Cleaner - Remove ads and unwanted content from subtitle files")
-    print(f"  {Fore.RED}2{Style.RESET_ALL} = Return to main menu\n")
+    print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Delete moved_subtitles folders - Clean up old subtitle backups")
+    print(f"  {Fore.RED}3{Style.RESET_ALL} = Return to main menu\n")
     
     print(f"{Style.DIM}More tools will be added in future updates.{Style.RESET_ALL}")
 
@@ -437,9 +438,11 @@ def show_extra_tools_menu():
         if choice == "1":
             show_subtitle_cleaner()
         elif choice == "2":
+            show_delete_moved_subtitles_confirmation()
+        elif choice == "3":
             break
         else:
-            print(f"{Fore.RED}Invalid choice. Please select 1 or 2.{Style.RESET_ALL}")
+            print(f"{Fore.RED}Invalid choice. Please select 1, 2, or 3.{Style.RESET_ALL}")
             time.sleep(1)
 
 def show_subtitle_cleaner():
@@ -470,6 +473,177 @@ def show_subtitle_cleaner():
         else:
             print(f"{Fore.RED}Invalid choice. Please select 1, 2, or 3.{Style.RESET_ALL}")
             time.sleep(1)
+
+def show_delete_moved_subtitles_confirmation():
+    """Show confirmation screen before deleting moved_subtitles folders."""
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Delete moved_subtitles Folders\n")
+    
+    print(f"{Style.BRIGHT}{Fore.CYAN}What this tool does:{Style.RESET_ALL}")
+    print(f"This tool scans for 'moved_subtitles' folders and deletes them after checking")
+    print(f"whether you still have external subtitle files for all languages.\n")
+    
+    print(f"{Style.BRIGHT}{Fore.YELLOW}Important:{Style.RESET_ALL}")
+    print(f"Only use this tool when you have good replacements for the backup subtitles.")
+    print(f"The tool will warn you if external subtitles are missing, but use with caution!\n")
+    
+    print(f"{Fore.WHITE}What would you like to do?{Style.RESET_ALL}\n")
+    print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, delete moved_subtitles folders")
+    print(f"  {Fore.RED}2{Style.RESET_ALL} = Return to extra tools menu\n")
+    
+    choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+    if choice == "1":
+        delete_moved_subtitles_folders()
+    elif choice == "2":
+        return
+    else:
+        print(f"{Fore.RED}Invalid choice. Returning to menu.{Style.RESET_ALL}")
+        time.sleep(1)
+
+def delete_moved_subtitles_folders():
+    """Delete moved_subtitles folders after checking subtitle coverage."""
+    try:
+        banner = f"                   {Fore.YELLOW}Delete moved_subtitles Folders{Style.RESET_ALL}"
+        utils.clear_and_print_ascii(banner)
+        
+        # Get current directory and config
+        current_dir = Path(__file__).parent.resolve()
+        config_dir = Path(user_config_dir()) / "Subservient"
+        pathfile = config_dir / "Subservient_pathfiles"
+        anchor_path = current_dir
+        
+        if pathfile.exists():
+            with open(pathfile, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("subservient_anchor="):
+                        anchor_path = Path(line.split("=", 1)[1].strip())
+                        break
+        
+        # Get languages from config
+        languages = ['en']
+        config_path1 = anchor_path / '.config'
+        if config_path1.exists():
+            languages = utils.get_languages_from_config(config_path1)
+        else:
+            try:
+                subservient_folder = utils.get_subservient_folder()
+                config_path2 = subservient_folder / '.config'
+                if config_path2.exists():
+                    languages = utils.get_languages_from_config(config_path2)
+            except Exception:
+                languages = ['en']
+        
+        print(f"{Fore.CYAN}Scanning for moved_subtitles folders...{Style.RESET_ALL}\n")
+        
+        # Find all moved_subtitles folders recursively (no skip_dirs restrictions)
+        moved_folders = []
+        for root, dirs, files in os.walk(current_dir):
+            if "moved_subtitles" in dirs:
+                moved_folder = Path(root) / "moved_subtitles"
+                moved_folders.append(moved_folder)
+        
+        if not moved_folders:
+            print(f"{Fore.GREEN}No moved_subtitles folders found.{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}Press Enter to return to the menu...{Style.RESET_ALL} ")
+            return
+        
+        print(f"{Fore.CYAN}Found {len(moved_folders)} moved_subtitles folder(s).{Style.RESET_ALL}\n")
+        
+        deleted_count = 0
+        skipped_count = 0
+        
+        for moved_folder in moved_folders:
+            parent_dir = moved_folder.parent
+            
+            # Find subtitle files in moved_subtitles folder
+            moved_subs = list(moved_folder.glob("*.srt")) + list(moved_folder.glob("*.ass"))
+            
+            if not moved_subs:
+                # Empty folder, safe to delete
+                print(f"{Fore.YELLOW}• {parent_dir.name}/moved_subtitles/ (empty){Style.RESET_ALL}")
+                try:
+                    import shutil
+                    shutil.rmtree(moved_folder)
+                    print(f"  {Fore.GREEN}✓ Deleted{Style.RESET_ALL}\n")
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"  {Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}\n")
+                    skipped_count += 1
+                continue
+            
+            # Detect languages in moved_subtitles folder
+            moved_langs = set()
+            for sub_file in moved_subs:
+                for lang in languages:
+                    if f".{lang}." in sub_file.name.lower():
+                        moved_langs.add(lang)
+                        break
+            
+            if not moved_langs:
+                # Can't detect languages, assume safe to delete
+                print(f"{Fore.YELLOW}• {parent_dir.name}/moved_subtitles/ ({len(moved_subs)} subtitle(s), no configured languages detected){Style.RESET_ALL}")
+                try:
+                    import shutil
+                    shutil.rmtree(moved_folder)
+                    print(f"  {Fore.GREEN}✓ Deleted{Style.RESET_ALL}\n")
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"  {Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}\n")
+                    skipped_count += 1
+                continue
+            
+            # Check if parent directory has external subtitles for all moved languages
+            missing_langs = []
+            for lang in moved_langs:
+                # Look for .srt files with language code in parent directory
+                external_subs = list(parent_dir.glob(f"*.{lang}.srt")) + list(parent_dir.glob(f"*.{lang}.ass"))
+                if not external_subs:
+                    missing_langs.append(lang)
+            
+            # Display folder info
+            lang_list = ", ".join(sorted(moved_langs))
+            print(f"{Fore.CYAN}• {parent_dir.name}/moved_subtitles/{Style.RESET_ALL}")
+            print(f"  Languages in moved_subtitles: {Fore.YELLOW}{lang_list}{Style.RESET_ALL}")
+            
+            if missing_langs:
+                missing_list = ", ".join(sorted(missing_langs))
+                print(f"  {Fore.RED}[WARNING] Missing in parent folder: {missing_list}{Style.RESET_ALL}")
+                confirm = input(f"  Delete anyway? (y/n): ").strip().lower()
+                if confirm == 'y':
+                    try:
+                        import shutil
+                        shutil.rmtree(moved_folder)
+                        print(f"  {Fore.GREEN}✓ Deleted{Style.RESET_ALL}\n")
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"  {Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}\n")
+                        skipped_count += 1
+                else:
+                    print(f"  {Fore.YELLOW}○ Skipped{Style.RESET_ALL}\n")
+                    skipped_count += 1
+            else:
+                print(f"  {Fore.GREEN}✓ All languages present in parent folder{Style.RESET_ALL}")
+                try:
+                    import shutil
+                    shutil.rmtree(moved_folder)
+                    print(f"  {Fore.GREEN}✓ Deleted{Style.RESET_ALL}\n")
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"  {Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}\n")
+                    skipped_count += 1
+        
+        # Summary
+        print(f"\n{Style.BRIGHT}{Fore.CYAN}Summary:{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}Deleted: {deleted_count}{Style.RESET_ALL}")
+        print(f"  {Fore.YELLOW}Skipped: {skipped_count}{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.YELLOW}Press Enter to return to the menu...{Style.RESET_ALL} ")
+        
+    except Exception as e:
+        utils.clear_and_print_ascii(BANNER_LINE)
+        print(f"{Style.BRIGHT}{Fore.RED}[Error]{Style.RESET_ALL}")
+        print(f"{Fore.RED}An error occurred: {str(e)}{Style.RESET_ALL}")
+        input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
 
 def print_instructions_page(page):
     """Display specified page of usage instructions.
