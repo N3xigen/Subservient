@@ -29,6 +29,9 @@ Thumbs.db
 *.temp
 *~
 
+# Subtitle backups (personal data, not meant for version control)
+data/subtitle_backups/
+
 # User data/config that shouldn't be shared
 .config
 *.personal

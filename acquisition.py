@@ -1,6 +1,7 @@
 ﻿import os
 import sys
 import subprocess
+import shutil
 
 def check_required_packages():
     """Check if all required packages are installed and show install instructions if missing."""
@@ -37,9 +38,10 @@ import time
 from colorama import Fore, Style
 import datetime
 from platformdirs import user_config_dir
-from utils import ASCII_ART, clear_and_print_ascii, get_skip_dirs_from_config, has_strict_series_naming_pattern, extract_sxxexx_code
+from utils import ASCII_ART, clear_and_print_ascii, get_skip_dirs_from_config, has_strict_series_naming_pattern, extract_sxxexx_code, make_drift_metadata_key, load_drift_subtitle_metadata
 from opensubtitles_hash import calculate_hash
 SNAPSHOT_DIR = Path(__file__).parent.resolve()
+DRIFT_METADATA_FILE = str(SNAPSHOT_DIR / '.drifted_and_failed_subtitles.txt')
 BANNER_LINE = f"                   {Style.BRIGHT}{Fore.RED}[Phase 3/4]{Style.RESET_ALL} Subtitle Acquisition"
 CONFIG_PATH = SNAPSHOT_DIR / '.config'
 run_counter = 1
@@ -133,7 +135,7 @@ REQUIRED_SETUP_KEYS = [
     'username',
     'password',
     'languages',
-    'top_downloads',
+    'subtitle_batch_size',
     'series_mode',
 ]
 def parse_bool(val):
@@ -178,11 +180,146 @@ USERNAME = setup['username']
 PASSWORD = setup['password']
 LANGUAGES = [lang.strip() for lang in setup['languages'].split(',') if lang.strip()]
 MAX_SEARCH_RESULTS = int(setup.get('max_search_results', 50))
-TOP_DOWNLOADS = int(setup['top_downloads'])
+SUBTITLE_BATCH_SIZE = int(setup['subtitle_batch_size'])
 DOWNLOAD_RETRY_503 = int(setup.get('download_retry_503', 6))
 SERIES_MODE = setup['series_mode']
 USE_MOVIE_HASH = setup.get('use_movie_hash', 'true').lower() in ('true', '1', 'yes', 'on')
 LAST_RESORT_SEARCH = setup.get('last_resort_search', 'false').lower() in ('true', '1', 'yes', 'on')
+OMDB_API_KEY = setup.get('omdb_api_key', '').strip()
+
+def get_imdb_id_from_omdb(title, year=None, max_retries=3, media_type='movie'):
+    """
+    Lookup IMDb ID using OMDb API with retry mechanism.
+    
+    Args:
+        title: Movie/series title (e.g., "Eternals")
+        year: Release year (e.g., "2021")
+        max_retries: Number of retry attempts for errors (default: 3)
+        media_type: 'movie' or 'series' (default: 'movie')
+    
+    Returns:
+        IMDb ID (e.g., "tt9032400") or None if not found
+    """
+    if not OMDB_API_KEY:
+        return None
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            params = {
+                't': title,
+                'apikey': OMDB_API_KEY,
+                'type': media_type
+            }
+            if year:
+                params['y'] = year
+            
+            response = requests.get('http://www.omdbapi.com/', params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('Response') == 'True' and 'imdbID' in data:
+                    imdb_id = data['imdbID']
+                    print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [OMDb]{Style.RESET_ALL} Found IMDb ID: {Fore.CYAN}{imdb_id}{Style.RESET_ALL} for '{title}' ({year})")
+                    return imdb_id
+                else:
+                    error_msg = data.get('Error', 'Unknown error')
+                    if media_type == 'series':
+                        # Fallback 1: try without type restriction
+                        params2 = {'t': title, 'apikey': OMDB_API_KEY}
+                        if year:
+                            params2['y'] = year
+                        r2 = requests.get('http://www.omdbapi.com/', params=params2, timeout=5)
+                        if r2.status_code == 200:
+                            d2 = r2.json()
+                            if d2.get('Response') == 'True' and 'imdbID' in d2:
+                                imdb_id = d2['imdbID']
+                                print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [OMDb fallback]{Style.RESET_ALL} Found IMDb ID: {Fore.CYAN}{imdb_id}{Style.RESET_ALL} for '{title}' ({year})")
+                                return imdb_id
+                        # Fallback 2: try possessive variants (e.g. "Handmaids" -> "Handmaid's", "Schitts" -> "Schitt's")
+                        _SKIP_WORDS = {'is', 'was', 'has', 'its', 'this', 'as', 'us', 'yes', 'plus', 'times', 'series', 'across', 'always', 'perhaps', 'unless', 'whereas'}
+                        _words = title.split()
+                        for _i, _word in enumerate(_words):
+                            if len(_word) > 3 and _word.lower().endswith('s') and _word.lower() not in _SKIP_WORDS:
+                                _variant_words = _words.copy()
+                                _variant_words[_i] = _word[:-1] + "'s"
+                                _variant_title = ' '.join(_variant_words)
+                                _pv = {'t': _variant_title, 'apikey': OMDB_API_KEY, 'type': media_type}
+                                if year:
+                                    _pv['y'] = year
+                                _rv = requests.get('http://www.omdbapi.com/', params=_pv, timeout=5)
+                                if _rv.status_code == 200:
+                                    _dv = _rv.json()
+                                    if _dv.get('Response') == 'True' and 'imdbID' in _dv:
+                                        imdb_id = _dv['imdbID']
+                                        print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [OMDb possessive fallback]{Style.RESET_ALL} Found IMDb ID: {Fore.CYAN}{imdb_id}{Style.RESET_ALL} for '{_variant_title}' ({year})")
+                                        return imdb_id
+                        # Fallback 3: use OMDb s= search as last resort
+                        params3 = {'s': title, 'apikey': OMDB_API_KEY}
+                        r3 = requests.get('http://www.omdbapi.com/', params=params3, timeout=5)
+                        if r3.status_code == 200:
+                            d3 = r3.json()
+                            if d3.get('Response') == 'True' and d3.get('Search'):
+                                for hit in d3['Search']:
+                                    if hit.get('Type') in ('series', 'movie') and 'imdbID' in hit:
+                                        imdb_id = hit['imdbID']
+                                        print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [OMDb search fallback]{Style.RESET_ALL} Found IMDb ID: {Fore.CYAN}{imdb_id}{Style.RESET_ALL} for '{hit.get('Title')}' ({hit.get('Year')})")
+                                        return imdb_id
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[OMDb] No IMDb ID found: {error_msg}{Style.RESET_ALL}")
+                    return None
+            else:
+                # HTTP error - retry
+                if attempt < max_retries:
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[OMDb] API returned status {response.status_code}. Retrying... (attempt {attempt}/{max_retries}){Style.RESET_ALL}")
+                    time.sleep(2)  # Wait before retry
+                    continue
+                else:
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[OMDb] API returned status {response.status_code} after {max_retries} attempts{Style.RESET_ALL}")
+                    return None
+        except Exception as e:
+            # Exception - retry
+            if attempt < max_retries:
+                print_and_log(f"{acq_tag()} {Fore.YELLOW}[OMDb] Lookup failed: {str(e)}. Retrying... (attempt {attempt}/{max_retries}){Style.RESET_ALL}")
+                time.sleep(2)  # Wait before retry
+                continue
+            else:
+                print_and_log(f"{acq_tag()} {Fore.YELLOW}[OMDb] Lookup failed after {max_retries} attempts: {str(e)}{Style.RESET_ALL}")
+                return None
+    
+    return None
+
+def get_episode_imdb_id_from_omdb(show_title, season, episode):
+    """
+    Lookup the episode-specific IMDb ID using OMDb API (Season/Episode params).
+    Returns IMDb ID string (e.g. "tt7435248") or None.
+    """
+    if not OMDB_API_KEY:
+        return None
+    # Try with possessive variants if needed (same logic as show lookup)
+    titles_to_try = [show_title]
+    _SKIP_WORDS = {'is', 'was', 'has', 'its', 'this', 'as', 'us', 'yes', 'plus', 'times', 'series', 'across', 'always', 'perhaps', 'unless', 'whereas'}
+    _words = show_title.split()
+    for _i, _word in enumerate(_words):
+        if len(_word) > 3 and _word.lower().endswith('s') and _word.lower() not in _SKIP_WORDS:
+            _variant_words = _words.copy()
+            _variant_words[_i] = _word[:-1] + "'s"
+            titles_to_try.append(' '.join(_variant_words))
+    for title in titles_to_try:
+        try:
+            params = {
+                't': title,
+                'Season': season,
+                'Episode': episode,
+                'apikey': OMDB_API_KEY,
+            }
+            r = requests.get('http://www.omdbapi.com/', params=params, timeout=5)
+            if r.status_code == 200:
+                d = r.json()
+                if d.get('Response') == 'True' and 'imdbID' in d:
+                    ep_id = d['imdbID']
+                    print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [OMDb episode]{Style.RESET_ALL} Found episode IMDb ID: {Fore.CYAN}{ep_id}{Style.RESET_ALL} for '{title}' S{season:02d}E{episode:02d}")
+                    return ep_id
+        except Exception:
+            pass
+    return None
 
 def detect_subtitle_folder(video_folder: Path, season_code: str, language: str):
     """
@@ -526,12 +663,14 @@ def get_token_from_config():
                 return parts[1].strip()
     return None
 
+_jwt_token_cache = None
+
 def get_jwt_token():
     """Obtain JWT token through API authentication."""
-    token = get_token_from_config()
-    if token:
-        return token
-    print_and_log(f"{acq_tag()} * No valid JWT token in .config. Logging in...")
+    global _jwt_token_cache
+    if _jwt_token_cache:
+        return _jwt_token_cache
+    print_and_log(f"{acq_tag()} * Logging in to OpenSubtitles to get a fresh JWT token...")
     login_url = f"{API_URL}/login"
     login_headers = {
         "Api-Key": API_KEY,
@@ -552,12 +691,13 @@ def get_jwt_token():
         json_data = response.json()
         token = json_data.get("token")
         if token:
+            _jwt_token_cache = token
             set_token_in_config(token)
             print_and_log(f"{acq_tag()} * New JWT token saved to .config.")
             return token
     elif response.status_code == 429:
-        print_and_log(f"{acq_tag()} 429: Too many requests. Waiting {int(PAUSE_SECONDS)} seconds...")
-        time.sleep(PAUSE_SECONDS)
+        print_and_log(f"{acq_tag()} 429: Too many requests. Waiting 10 seconds...")
+        time.sleep(10)
         return get_jwt_token()
     elif response.status_code == 403:
         handle_api_error(response, {
@@ -590,13 +730,16 @@ def clean_title(raw_title: str) -> str:
     UNWANTED_CHARS = r"[\[\]\(\)\{\}_\+\.-]"
     WHITELIST = {"a", "i", "z", "o", "u"}
     cleaned = raw_title.replace('.', ' ')
-    pattern = r"\\b(" + "|".join(re.escape(term) for term in UNWANTED_TERMS) + r")\\b"
+    pattern = r"\b(" + "|".join(re.escape(term) for term in UNWANTED_TERMS) + r")\b"
     cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"[\[\(\{][^\]\)\}]*[\]\)\}]", "", cleaned)
-    cleaned = re.sub(r"\\b(?!(?:19|20)\\d{2})\\d+\\b", "", cleaned)
+    # Remove large numbers (≥100) except years (19xx/20xx)
+    # This keeps sequel numbers (1-99) and years, removes resolution/bitrate
+    cleaned = re.sub(r"\b(?!(?:19|20)\d{2}\b)(?:[1-9]\d{2,})\b", "", cleaned)
     cleaned = re.sub(UNWANTED_CHARS, " ", cleaned)
-    cleaned = re.sub(r"[^a-zA-Z ]", "", cleaned)
-    cleaned = re.sub(r"\\s+", " ", cleaned)
+    # Keep letters, digits (0-9), special fraction characters, and spaces
+    cleaned = re.sub(r"[^a-zA-Z0-9\u00BC-\u00BE\u2150-\u215E ]", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
     words = cleaned.split()
     result = []
     for i, word in enumerate(words):
@@ -676,7 +819,7 @@ def check_existing_subtitles(mkv_path: Path) -> dict:
         result[lang] = has_standard or has_series
         
         if has_standard or has_series:
-            print_and_log(f"{acq_tag()} {Fore.GREEN}    ✓ {lang.upper()}:{Style.RESET_ALL} subtitle found")
+            print_and_log(f"{acq_tag()} {Fore.GREEN}    [OK] {lang.upper()}:{Style.RESET_ALL} subtitle found")
         else:
             print_and_log(f"{acq_tag()} {Fore.YELLOW}    - {lang.upper()}:{Style.RESET_ALL} no subtitle found")
     return result
@@ -687,9 +830,34 @@ def extract_sxxexx_code(name: str) -> str | None:
     return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
 
 unknown_sxxexx_files = []
+quota_exceeded = False
+
+def show_quota_exceeded_screen():
+    """Show a friendly screen when the OpenSubtitles daily download quota is reached.
+    Loops until the user chooses to retry (which lets the caller re-attempt) or exit.
+    Returns True if the user wants to retry, False if they want to exit.
+    """
+    while True:
+        clear_and_print_ascii(BANNER_LINE)
+        print_and_log(f"\n{Style.BRIGHT}{Fore.CYAN}Daily Download Quota Reached{Style.RESET_ALL}\n")
+        print_and_log(f"OpenSubtitles allows a limited number of subtitle downloads per 24 hours.")
+        print_and_log(f"It looks like that limit has been reached for today.\n")
+        print_and_log(f"{Fore.LIGHTYELLOW_EX}The quota resets 24 hours after your first download of the day.{Style.RESET_ALL}")
+        print_and_log(f"{Fore.LIGHTYELLOW_EX}You can come back later and press Retry to continue where you left off.{Style.RESET_ALL}\n")
+        print_and_log(f"{Fore.CYAN}1{Style.RESET_ALL} = {Style.BRIGHT}Retry {Fore.LIGHTBLACK_EX}(try again now or after the quota has reset){Style.RESET_ALL}")
+        print_and_log(f"{Fore.CYAN}2{Style.RESET_ALL} = Exit Subservient\n")
+        choice = input_and_log(f"Make a choice [{Fore.CYAN}1{Style.RESET_ALL}/{Fore.CYAN}2{Style.RESET_ALL}]: ").strip()
+        if choice in ('1', ''):
+            return True
+        elif choice == '2':
+            print_and_log(f"\n{acq_tag()} {Fore.CYAN}Closing Subservient. Run again when the quota has reset.{Style.RESET_ALL}")
+            sys.exit(0)
+        else:
+            print_and_log(f"{Fore.RED}Invalid choice. Please enter 1 or 2.{Style.RESET_ALL}")
+
 def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, candidate_index=None, force_download=False):
     """Download the top-rated subtitles for specified language and video."""
-    global unknown_sxxexx_files
+    global unknown_sxxexx_files, quota_exceeded
     headers = {
         "Api-Key": API_KEY,
         "User-Agent": "NexigenSubtitleBot v1.0",
@@ -698,7 +866,7 @@ def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, ca
     sxxexx_from_mkv = None
     if SERIES_MODE and mkv_path is not None:
         sxxexx_from_mkv = extract_sxxexx_code(mkv_path.name)
-    for i, sub in enumerate(subs[:TOP_DOWNLOADS], 1):
+    for i, sub in enumerate(subs[:SUBTITLE_BATCH_SIZE], 1):
         idx = candidate_index if candidate_index is not None else i
         drift_exists = any(f"number{idx}.DRIFT" in f.name for f in get_subtitle_files_by_pattern(dest_folder, lang, ".DRIFT"))
         failed_exists = any(f"number{idx}.FAILED" in f.name for f in get_subtitle_files_by_pattern(dest_folder, lang, ".FAILED"))
@@ -740,7 +908,11 @@ def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, ca
                 time.sleep(0.5)
                 
                 if resp is None or resp.status_code >= 400:
-                    if resp and resp.status_code == 503:
+                    if resp is not None and resp.status_code == 406:
+                        print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}406: Daily download quota reached. Pausing downloads.{Style.RESET_ALL}", Fore.YELLOW)
+                        quota_exceeded = True
+                        return  # Stop all downloads immediately after finishing this attempt
+                    elif resp is not None and resp.status_code == 503:
                         if attempt < max_retries_503:
                             delay = min(5 * attempt, 30)
                             print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}503 Service Unavailable (server overloaded). Retrying in {delay}s... (attempt {attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
@@ -750,8 +922,9 @@ def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, ca
                             print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download after {max_retries_503} attempts (503 Service Unavailable). OpenSubtitles servers are overloaded. Skipping.{Style.RESET_ALL}", Fore.RED)
                             break
                     elif attempt < max_retries_503:
-                        print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}HTTP error (status {getattr(resp, 'status_code', 'N/A')}). Retrying in {int(PAUSE_SECONDS)}s... (attempt {attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
-                        time.sleep(PAUSE_SECONDS)
+                        http_retry_delay = 5
+                        print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}HTTP error (status {getattr(resp, 'status_code', 'N/A')}). Retrying in {http_retry_delay}s... (attempt {attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
+                        time.sleep(http_retry_delay)
                         continue
                     else:
                         print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download after {max_retries_503} attempts (HTTP error). Skipping.{Style.RESET_ALL}", Fore.RED)
@@ -778,8 +951,9 @@ def download_top_subtitles(subs, lang, dest_folder, jwt_token, mkv_path=None, ca
                                         print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download SRT after {max_retries_503} attempts (503 Service Unavailable). Skipping.{Style.RESET_ALL}", Fore.RED)
                                         break
                                 elif srt_attempt < max_retries_503:
-                                    print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}SRT HTTP error (status {getattr(srt_resp, 'status_code', 'N/A')}). Retrying in {int(PAUSE_SECONDS)}s... (attempt {srt_attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
-                                    time.sleep(PAUSE_SECONDS)
+                                    http_retry_delay = 5
+                                    print_and_log_colored(f"{acq_tag()} {Fore.YELLOW}SRT HTTP error (status {getattr(srt_resp, 'status_code', 'N/A')}). Retrying in {http_retry_delay}s... (attempt {srt_attempt}/{max_retries_503}){Style.RESET_ALL}", Fore.YELLOW)
+                                    time.sleep(http_retry_delay)
                                     continue
                                 else:
                                     print_and_log_colored(f"{acq_tag()} {Fore.RED}Failed to download SRT after {max_retries_503} attempts (HTTP error). Skipping.{Style.RESET_ALL}", Fore.RED)
@@ -821,23 +995,49 @@ def print_subtitle_list(subs, lang, color=Fore.LIGHTBLUE_EX):
                f"[{Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}]"
         print_and_log(line)
     print_and_log("")
-def filter_subtitles_by_query(subs, query):
-    """Filter subtitle results by search query terms."""
-    match = re.search(r'(.*?)([\s._-]?)(19|20)\\d{2}', query)
+def filter_subtitles_by_query(subs, query, debug=False):
+    """Filter subtitle results by search query terms using word boundaries to avoid partial matches."""
+    match = re.search(r'(.*?)([\s._-]?)(19|20)\d{2}', query)
     if match:
         left = match.group(1).strip().split()
         year = match.group(3) + match.group(0)[-2:]
         filter_words = [w.lower() for w in left if w] + [year]
     else:
         filter_words = [w.lower() for w in query.strip().split() if w]
+    
+    if debug:
+        print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}[Filter] Words: {filter_words}{Style.RESET_ALL}")
+
     filtered = []
+    rejected_sample = []
     for sub in subs:
         # Skip subtitles without file information
         if not sub.get('attributes', {}).get('files') or len(sub['attributes']['files']) == 0:
             continue
-        file_name = sub['attributes']['files'][0]['file_name'].lower()
-        if all(word in file_name for word in filter_words):
+        file_name = sub['attributes']['files'][0]['file_name'].lower().replace("'", "")
+        
+        # Use word boundaries to match whole words only (avoid "eternal" matching "eternally")
+        # Word boundaries include: spaces, dots, underscores, hyphens, start/end of string
+        all_matched = True
+        failed_word = None
+        for word in filter_words:
+            # Create pattern that matches the word with word boundaries (non-alphanumeric chars)
+            # \b doesn't work well with dots/underscores, so use explicit boundaries
+            pattern = r'(?:^|[.\s_-])' + re.escape(word) + r'(?:[.\s_-]|$)'
+            if not re.search(pattern, file_name):
+                all_matched = False
+                failed_word = word
+                break
+        
+        if all_matched:
             filtered.append(sub)
+        elif debug and len(rejected_sample) < 5:
+            rejected_sample.append(f"'{file_name}' (missing: '{failed_word}')")
+    
+    if debug and rejected_sample:
+        for r in rejected_sample:
+            print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}[Filter] Rejected: {r}{Style.RESET_ALL}")
+    
     return filtered
 def handle_api_error(response, request_details=None):
     """Handle and display API error responses with detailed information."""
@@ -977,9 +1177,12 @@ def build_search_query(raw_title: str) -> str:
     year_match = re.search(r'(19|20)\d{2}', raw_title)
     if year_match:
         year = year_match.group(0)
-        idx = year_match.end()
-        left = raw_title[:idx].rstrip(" ._-()[]")
-        query = left.strip()
+        # Get everything before the year
+        title_part = raw_title[:year_match.start()].rstrip(" ._-()[]")
+        # Clean the title part to remove unwanted terms
+        cleaned_title = clean_title(title_part)
+        # Combine cleaned title with year
+        query = f"{cleaned_title} {year}".strip()
     else:
         query = clean_title(raw_title)
     return clean_query(query)
@@ -990,7 +1193,9 @@ def clean_query(query):
     query = re.sub(r'[\[\](){}]', '', query)
     query = query.replace('.', ' ')
     query = re.sub(r'(19|20)\d{2}$', lambda m: m.group(0), query)
-    query = re.sub(r'(?<!\d)(\d{1,2})$', '', query).strip()
+    # Don't remove sequel numbers (1-99) from the end - keep them for accurate matching
+    # This line is now commented out to preserve sequel numbers like "Lion King 3"
+    # query = re.sub(r'(?<!\d)(\d{1,2})$', '', query).strip()
     return query
 
 def remove_all_short_numbers(query):
@@ -1006,7 +1211,9 @@ def remove_all_short_numbers(query):
         placeholder = f'__THREE{i}__'
         query = re.sub(r'\b' + re.escape(three) + r'\b', placeholder, query, count=1)
         three_placeholders.append((placeholder, three))
-    query = re.sub(r'\b\d{1,2}\b', '', query)
+    # Don't remove 1-2 digit numbers anymore - these can be sequel numbers
+    # This line removed to preserve "Lion King 3", "Avatar 2", etc.
+    # query = re.sub(r'\b\d{1,2}\b', '', query)
     for placeholder, year in year_placeholders:
         query = query.replace(placeholder, year)
     for placeholder, three in three_placeholders:
@@ -1014,7 +1221,56 @@ def remove_all_short_numbers(query):
     query = re.sub(r'\s+', ' ', query).strip()
     return query
 
+def write_subtitle_metadata(video_folder: Path, video_name: str, lang: str, imdb_match: bool):
+    """Write metadata about subtitle acquisition for manual verification decision."""
+    metadata_file = SNAPSHOT_DIR / ".subtitle_metadata.txt"
+    try:
+        # Read existing entries
+        entries = {}
+        if metadata_file.exists():
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if '|' in line:
+                        parts = line.strip().split('|')
+                        if len(parts) >= 3:
+                            # Format: video_name|lang|imdb_status|rejected_count
+                            rejected = parts[3] if len(parts) >= 4 else "0"
+                            entries[f"{parts[0]}|{parts[1]}"] = (parts[2], rejected)
+        
+        # Add/update entry for this video+lang (preserve rejected count if exists)
+        key = f"{video_name}|{lang}"
+        imdb_status = "imdb_match" if imdb_match else "no_imdb_match"
+        rejected_count = entries[key][1] if key in entries else "0"
+        entries[key] = (imdb_status, rejected_count)
+        
+        # Write all entries back
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            for key, (status, rejected) in entries.items():
+                video, language = key.split('|')
+                f.write(f"{video}|{language}|{status}|{rejected}\n")
+    except Exception as e:
+        print_and_log(f"{acq_tag()} {Fore.YELLOW}Warning: Could not write subtitle metadata: {e}{Style.RESET_ALL}")
+
+def read_subtitle_metadata(video_folder: Path, video_name: str, lang: str):
+    """Read metadata about subtitle acquisition. Returns True if IMDb match, False otherwise."""
+    metadata_file = SNAPSHOT_DIR / ".subtitle_metadata.txt"
+    if not metadata_file.exists():
+        return False
+    
+    try:
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                if '|' in line:
+                    parts = line.strip().split('|')
+                    if len(parts) >= 3:
+                        if parts[0] == video_name and parts[1] == lang:
+                            return parts[2] == "imdb_match"
+    except Exception:
+        pass
+    return False
+
 def search_subtitles(movie_path: Path, jwt_token: str):
+    global quota_exceeded
     raw_title = movie_path.stem
     query = build_search_query(raw_title)
     query = remove_all_short_numbers(query)
@@ -1099,7 +1355,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
         if SERIES_MODE and sync and not (normal.exists() or (series_srt and series_srt.exists())):
             # Count existing extracted subtitles for this episode
             current_count = len(sync)
-            batch_size = TOP_DOWNLOADS  # Use TOP_DOWNLOADS as batch size
+            batch_size = SUBTITLE_BATCH_SIZE  # Use SUBTITLE_BATCH_SIZE as batch size
             
             if current_count >= batch_size:
                 print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {lang.upper()}: {current_count} extracted subtitles available (batch size: {batch_size})!{Style.RESET_ALL}")
@@ -1152,7 +1408,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             all_indices = set(range(1, available_count + 1))
             drift_set = set(drift_numbers)
             not_tried_indices = sorted(all_indices - drift_set)
-            batch_to_try = not_tried_indices[:TOP_DOWNLOADS]
+            batch_to_try = not_tried_indices[:SUBTITLE_BATCH_SIZE]
             if not batch_to_try:
                 print_and_log(f"{acq_tag()} {Fore.RED}No new candidates left to try for {lang.upper()}!{Style.RESET_ALL}")
                 params_unfiltered = {
@@ -1210,7 +1466,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                             genuinely_new = []
                         else:
                             remaining_slots = MAX_SEARCH_RESULTS - total_downloaded
-                            candidates_to_download = genuinely_new[:min(TOP_DOWNLOADS, remaining_slots)]
+                            candidates_to_download = genuinely_new[:min(SUBTITLE_BATCH_SIZE, remaining_slots)]
                             print_and_log(f"{acq_tag()} {Fore.YELLOW}Broader search found {len(candidates_to_download)} genuinely new candidates for {lang.upper()}. (Downloaded: {total_downloaded}/{MAX_SEARCH_RESULTS}){Style.RESET_ALL}")
                             print_subtitle_list(candidates_to_download, lang, color=Fore.LIGHTYELLOW_EX)
                             drift_indices = []
@@ -1241,6 +1497,8 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                                 candidate_file_name = candidate['attributes']['files'][0]['file_name']
                                 cand_downloads = candidate['attributes'].get('download_count', 0)
                                 download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
+                                if quota_exceeded:
+                                    return
                             print_and_log(f"{acq_tag()} {Fore.GREEN}*{Style.RESET_ALL} Broader batch download complete for {lang.upper()}!\n{Style.RESET_ALL}")
                             if (query, movie_path, lang) in missing_queries:
                                 missing_queries.remove((query, movie_path, lang))
@@ -1260,7 +1518,7 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                         print_and_log_colored(f"{acq_tag()} {Fore.LIGHTYELLOW_EX}{last_resort_msg}{Style.RESET_ALL}")
                         print_and_log(f"{acq_tag()} {last_resort_msg}")
                         print_and_log(f"{acq_tag()} {Fore.RED}Last resort: downloading ALL candidates for {lang.upper()} (no filtering)!{Style.RESET_ALL}")
-                        all_candidates = sorted(unfiltered_results, key=lambda r: r['attributes'].get('download_count', 0), reverse=True)[:TOP_DOWNLOADS]
+                        all_candidates = sorted(unfiltered_results, key=lambda r: r['attributes'].get('download_count', 0), reverse=True)[:SUBTITLE_BATCH_SIZE]
                         unique_candidates = {}
                         for candidate in all_candidates:
                             cand_downloads = candidate['attributes'].get('download_count', 0)
@@ -1295,6 +1553,8 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                                 continue
                             files_before = set(movie_path.parent.glob(f"*.{lang}.number{i}.*.srt"))
                             download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
+                            if quota_exceeded:
+                                return
                             files_after = set(movie_path.parent.glob(f"*.{lang}.number{i}.*.srt"))
                             if files_after - files_before:
                                 any_downloaded = True
@@ -1337,6 +1597,8 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                     candidate = top_results[idx-1]
                     candidate_file_name = candidate['attributes']['files'][0]['file_name']
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=idx)
+                    if quota_exceeded:
+                        return
             if batch_to_try:
                 print_and_log(f"{acq_tag()} {Fore.GREEN}Batch download complete for {lang.upper()}!\n{Style.RESET_ALL}")
             else:
@@ -1353,10 +1615,108 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 "Api-Key": API_KEY
             }
 
-            # Try hash-based search first if enabled
+            # Try IMDb ID search first if OMDb is configured
             response = None
             results = []
-            if USE_MOVIE_HASH:
+            imdb_trusted_ids = set()
+            if OMDB_API_KEY:
+                try:
+                    # For series: strip SxxExx from query and get year from filename
+                    # For movies: extract year from query as before
+                    if SERIES_MODE:
+                        _sxxexx_q = extract_sxxexx_code(movie_path.name)
+                        _title_for_omdb = re.sub(r'\s*[sS]\d{1,2}[eE]\d{1,2}.*', '', query).strip()
+                        _title_for_omdb = clean_title(_title_for_omdb)
+                        _year_match = re.search(r'(19|20)\d{2}', movie_path.name)
+                        year = _year_match.group(0) if _year_match else None
+                        title = _title_for_omdb
+                    else:
+                        year_match = re.search(r'(19|20)\d{2}', query)
+                        if year_match:
+                            year = year_match.group(0)
+                            title = query[:year_match.start()].strip()
+                        else:
+                            year = None
+                            title = query.strip()
+                        title = clean_title(title)
+                    
+                    # Lookup IMDb ID
+                    _omdb_type = 'series' if SERIES_MODE else 'movie'
+                    imdb_id = get_imdb_id_from_omdb(title, year, media_type=_omdb_type)
+                    if imdb_id:
+                        params_imdb = {
+                            "imdb_id": imdb_id,
+                            "languages": lang
+                        }
+                        if SERIES_MODE:
+                            _sxxexx = extract_sxxexx_code(movie_path.name)
+                            if _sxxexx:
+                                params_imdb["season_number"] = int(_sxxexx[1:3])
+                                params_imdb["episode_number"] = int(_sxxexx[4:6])
+                        print_and_log(f"{acq_tag()} {Fore.LIGHTCYAN_EX}[IMDb SEARCH]{Style.RESET_ALL} Searching for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL} subtitles using IMDb ID: {Fore.CYAN}{imdb_id}{Style.RESET_ALL}")
+                        response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_imdb)
+                        time.sleep(0.5)
+                        if response.status_code == 200:
+                            data = response.json()
+                            imdb_results = data.get("data", [])
+                            if imdb_results:
+                                print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [IMDb MATCH]{Style.RESET_ALL} Found {Fore.GREEN}{len(imdb_results)}{Style.RESET_ALL} subtitle(s) for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}")
+                                results = imdb_results
+                                imdb_trusted_ids = {r['id'] for r in imdb_results}
+                                # Also run text search and merge — some uploads are indexed under a different IMDb ID
+                                try:
+                                    _params_text = {"query": query, "languages": lang}
+                                    _resp_text = requests.get(f"{API_URL}/subtitles", headers=headers, params=_params_text)
+                                    time.sleep(0.5)
+                                    if _resp_text.status_code == 200:
+                                        _text_results = _resp_text.json().get("data", [])
+                                        _existing_ids = {r['id'] for r in results}
+                                        _new = [r for r in _text_results if r['id'] not in _existing_ids]
+                                        if _new:
+                                            print_and_log(f"{acq_tag()} {Fore.CYAN}[IMDb+Text merge]{Style.RESET_ALL} Added {len(_new)} extra result(s) from text search")
+                                            results = results + _new
+                                        else:
+                                            print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}[IMDb+Text merge] No new results from text search{Style.RESET_ALL}")
+                                except Exception as _merge_e:
+                                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb+Text merge] Failed: {_merge_e}{Style.RESET_ALL}")
+                                # In series mode: also search by episode-specific IMDb ID
+                                if SERIES_MODE and OMDB_API_KEY:
+                                    try:
+                                        _sxxexx_ep = extract_sxxexx_code(movie_path.name)
+                                        if _sxxexx_ep:
+                                            _ep_season = int(_sxxexx_ep[1:3])
+                                            _ep_episode = int(_sxxexx_ep[4:6])
+                                            _ep_imdb_id = get_episode_imdb_id_from_omdb(title, _ep_season, _ep_episode)
+                                            if _ep_imdb_id and _ep_imdb_id != imdb_id:
+                                                _params_ep = {"imdb_id": _ep_imdb_id, "languages": lang}
+                                                _resp_ep = requests.get(f"{API_URL}/subtitles", headers=headers, params=_params_ep)
+                                                time.sleep(0.5)
+                                                if _resp_ep.status_code == 200:
+                                                    _ep_results = _resp_ep.json().get("data", [])
+                                                    # Mark ALL episode IMDb results as trusted (even if already in results via text merge)
+                                                    imdb_trusted_ids.update(r['id'] for r in _ep_results)
+                                                    _existing_ids = {r['id'] for r in results}
+                                                    _new_ep = [r for r in _ep_results if r['id'] not in _existing_ids]
+                                                    if _new_ep:
+                                                        print_and_log(f"{acq_tag()} {Fore.CYAN}[IMDb+Episode merge]{Style.RESET_ALL} Added {len(_new_ep)} extra result(s) via episode IMDb ID {_ep_imdb_id}")
+                                                        results = results + _new_ep
+                                                    else:
+                                                        _newly_trusted = len([r for r in _ep_results if r['id'] in imdb_trusted_ids]) - len([r for r in imdb_results if r['id'] in imdb_trusted_ids])
+                                                        print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}[IMDb+Episode merge] No new results, but {len(_ep_results)} result(s) now trusted via episode IMDb ID{Style.RESET_ALL}")
+                                    except Exception as _ep_e:
+                                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb+Episode merge] Failed: {_ep_e}{Style.RESET_ALL}")
+                            else:
+                                print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb] No results found{Style.RESET_ALL}")
+                                response = None
+                        else:
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb] Search failed (HTTP {response.status_code}){Style.RESET_ALL}")
+                            response = None
+                except Exception as e:
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb] Lookup failed: {str(e)}{Style.RESET_ALL}")
+                    response = None
+
+            # Try hash-based search if IMDb search failed and hash is enabled
+            if (not response or response.status_code != 200) and USE_MOVIE_HASH:
                 try:
                     movie_hash = calculate_hash(movie_path)
                     file_size = movie_path.stat().st_size
@@ -1365,32 +1725,32 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                         "moviebytesize": str(file_size),
                         "languages": lang
                     }
-                    print_and_log(f"\n{acq_tag()} {Fore.LIGHTMAGENTA_EX}[HASH SEARCH] Searching by movie hash for {lang.upper()}: {movie_hash}{Style.RESET_ALL}")
+                    print_and_log(f"{acq_tag()} {Fore.LIGHTMAGENTA_EX}[HASH SEARCH]{Style.RESET_ALL} Searching for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL} subtitles using file hash")
                     response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_hash)
                     time.sleep(0.5)
                     if response.status_code == 200:
                         data = response.json()
                         hash_results = data.get("data", [])
                         if hash_results:
-                            print_and_log(f"{acq_tag()} {Fore.GREEN}[HASH MATCH] Found {len(hash_results)} hash-matched subtitle(s) for {lang.upper()}!{Style.RESET_ALL}")
+                            print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [HASH MATCH]{Style.RESET_ALL} Found {Fore.GREEN}{len(hash_results)}{Style.RESET_ALL} subtitle(s) for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}")
                             results = hash_results
                         else:
-                            print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] No hash matches, falling back to text search{Style.RESET_ALL}")
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH] No results found{Style.RESET_ALL}")
                             response = None
                     else:
-                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash search failed (HTTP {response.status_code}), falling back to text search{Style.RESET_ALL}")
+                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH] Search failed (HTTP {response.status_code}){Style.RESET_ALL}")
                         response = None
                 except Exception as e:
-                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash calculation failed ({str(e)}), falling back to text search{Style.RESET_ALL}")
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH] Calculation failed: {str(e)}{Style.RESET_ALL}")
                     response = None
 
-            # Fallback to text-based search if hash search disabled or failed
+            # Fallback to text-based search if IMDb and hash search failed
             if not response or response.status_code != 200:
                 params = {
                     "query": query,
                     "languages": lang
                 }
-                print_and_log(f"\n{acq_tag()} {Fore.CYAN}Search query for {lang.upper()}: '{display_query}'{Style.RESET_ALL}")
+                print_and_log(f"{acq_tag()} {Fore.CYAN}[TEXT SEARCH]{Style.RESET_ALL} Searching for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}: '{Fore.WHITE}{display_query}{Style.RESET_ALL}'")
                 response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params)
                 time.sleep(0.5)
 
@@ -1398,7 +1758,9 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 if not results:  # Only get results if not already retrieved from hash search
                     data = response.json()
                     results = data.get("data", [])
-                filtered_results = filter_subtitles_by_query(results, query)
+                trusted = [r for r in results if r['id'] in imdb_trusted_ids]
+                untrusted = [r for r in results if r['id'] not in imdb_trusted_ids]
+                filtered_results = trusted + filter_subtitles_by_query(untrusted, query)
                 top_results = sorted(filtered_results, key=lambda r: r['attributes'].get('download_count', 0), reverse=True)[:MAX_SEARCH_RESULTS]
                 header = f"\n{acq_tag()} Top {len(top_results)} subtitles ({lang.upper()}):"
                 print_and_log(header)
@@ -1456,10 +1818,110 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             "Api-Key": API_KEY
         }
 
-        # Try hash-based search first if enabled
+        # Try IMDb ID search first if OMDb is configured
         response = None
         results = []
-        if USE_MOVIE_HASH:
+        imdb_trusted_ids = set()  # IDs from IMDb searches — never filtered by filename
+        imdb_match_found = False  # Track if IMDb match was successful
+        if OMDB_API_KEY:
+            try:
+                # For series: strip SxxExx from query and get year from filename
+                # For movies: extract year from query as before
+                if SERIES_MODE:
+                    _sxxexx_q = extract_sxxexx_code(movie_path.name)
+                    _title_for_omdb = re.sub(r'\s*[sS]\d{1,2}[eE]\d{1,2}.*', '', query).strip()
+                    _title_for_omdb = clean_title(_title_for_omdb)
+                    _year_match = re.search(r'(19|20)\d{2}', movie_path.name)
+                    year = _year_match.group(0) if _year_match else None
+                    title = _title_for_omdb
+                else:
+                    year_match = re.search(r'(19|20)\d{2}', query)
+                    if year_match:
+                        year = year_match.group(0)
+                        title = query[:year_match.start()].strip()
+                    else:
+                        year = None
+                        title = query.strip()
+                    title = clean_title(title)
+                
+                # Lookup IMDb ID
+                _omdb_type = 'series' if SERIES_MODE else 'movie'
+                imdb_id = get_imdb_id_from_omdb(title, year, media_type=_omdb_type)
+                if imdb_id:
+                    params_imdb = {
+                        "imdb_id": imdb_id,
+                        "languages": lang
+                    }
+                    if SERIES_MODE:
+                        _sxxexx = extract_sxxexx_code(movie_path.name)
+                        if _sxxexx:
+                            params_imdb["season_number"] = int(_sxxexx[1:3])
+                            params_imdb["episode_number"] = int(_sxxexx[4:6])
+                    print_and_log(f"{acq_tag()} {Fore.LIGHTCYAN_EX}[IMDb SEARCH]{Style.RESET_ALL} Searching for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL} subtitles using IMDb ID: {Fore.CYAN}{imdb_id}{Style.RESET_ALL}")
+                    response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_imdb)
+                    time.sleep(0.5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        imdb_results = data.get("data", [])
+                        if imdb_results:
+                            print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [IMDb MATCH]{Style.RESET_ALL} Found {Fore.GREEN}{len(imdb_results)}{Style.RESET_ALL} subtitle(s) for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}")
+                            results = imdb_results
+                            imdb_trusted_ids = {r['id'] for r in imdb_results}
+                            imdb_match_found = True  # Mark as IMDb match
+                            # Also run text search and merge — some uploads are indexed under a different IMDb ID
+                            try:
+                                _params_text = {"query": query, "languages": lang}
+                                _resp_text = requests.get(f"{API_URL}/subtitles", headers=headers, params=_params_text)
+                                time.sleep(0.5)
+                                if _resp_text.status_code == 200:
+                                    _text_results = _resp_text.json().get("data", [])
+                                    _existing_ids = {r['id'] for r in results}
+                                    _new = [r for r in _text_results if r['id'] not in _existing_ids]
+                                    if _new:
+                                        print_and_log(f"{acq_tag()} {Fore.CYAN}[IMDb+Text merge]{Style.RESET_ALL} Added {len(_new)} extra result(s) from text search")
+                                        results = results + _new
+                                    else:
+                                        print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}[IMDb+Text merge] No new results from text search{Style.RESET_ALL}")
+                            except Exception as _merge_e:
+                                print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb+Text merge] Failed: {_merge_e}{Style.RESET_ALL}")
+                            # In series mode: also search by episode-specific IMDb ID
+                            # (some uploads are indexed under the episode's own IMDb ID, not the show's)
+                            if SERIES_MODE and OMDB_API_KEY:
+                                try:
+                                    _sxxexx_ep = extract_sxxexx_code(movie_path.name)
+                                    if _sxxexx_ep:
+                                        _ep_season = int(_sxxexx_ep[1:3])
+                                        _ep_episode = int(_sxxexx_ep[4:6])
+                                        _ep_imdb_id = get_episode_imdb_id_from_omdb(title, _ep_season, _ep_episode)
+                                        if _ep_imdb_id and _ep_imdb_id != imdb_id:
+                                            _params_ep = {"imdb_id": _ep_imdb_id, "languages": lang}
+                                            _resp_ep = requests.get(f"{API_URL}/subtitles", headers=headers, params=_params_ep)
+                                            time.sleep(0.5)
+                                            if _resp_ep.status_code == 200:
+                                                _ep_results = _resp_ep.json().get("data", [])
+                                                # Mark ALL episode IMDb results as trusted (even if already in results via text merge)
+                                                imdb_trusted_ids.update(r['id'] for r in _ep_results)
+                                                _existing_ids = {r['id'] for r in results}
+                                                _new_ep = [r for r in _ep_results if r['id'] not in _existing_ids]
+                                                if _new_ep:
+                                                    print_and_log(f"{acq_tag()} {Fore.CYAN}[IMDb+Episode merge]{Style.RESET_ALL} Added {len(_new_ep)} extra result(s) via episode IMDb ID {_ep_imdb_id}")
+                                                    results = results + _new_ep
+                                                else:
+                                                    print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}[IMDb+Episode merge] No new results, but {len(_ep_results)} result(s) now trusted via episode IMDb ID{Style.RESET_ALL}")
+                                except Exception as _ep_e:
+                                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb+Episode merge] Failed: {_ep_e}{Style.RESET_ALL}")
+                        else:
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb] No results found{Style.RESET_ALL}")
+                            response = None
+                    else:
+                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb] Search failed (HTTP {response.status_code}){Style.RESET_ALL}")
+                        response = None
+            except Exception as e:
+                print_and_log(f"{acq_tag()} {Fore.YELLOW}[IMDb] Lookup failed: {str(e)}{Style.RESET_ALL}")
+                response = None
+
+        # Try hash-based search if IMDb search failed and hash is enabled
+        if (not response or response.status_code != 200) and USE_MOVIE_HASH:
             try:
                 movie_hash = calculate_hash(movie_path)
                 file_size = movie_path.stat().st_size
@@ -1468,32 +1930,32 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                     "moviebytesize": str(file_size),
                     "languages": lang
                 }
-                print_and_log(f"\n{acq_tag()} {Fore.LIGHTMAGENTA_EX}[HASH SEARCH] Searching by movie hash for {lang.upper()}: {movie_hash}{Style.RESET_ALL}")
+                print_and_log(f"{acq_tag()} {Fore.LIGHTMAGENTA_EX}[HASH SEARCH]{Style.RESET_ALL} Searching for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL} subtitles using file hash")
                 response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_hash)
                 time.sleep(0.5)
                 if response.status_code == 200:
                     data = response.json()
                     hash_results = data.get("data", [])
                     if hash_results:
-                        print_and_log(f"{acq_tag()} {Fore.GREEN}[HASH MATCH] Found {len(hash_results)} hash-matched subtitle(s) for {lang.upper()}!{Style.RESET_ALL}")
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}[OK] [HASH MATCH]{Style.RESET_ALL} Found {Fore.GREEN}{len(hash_results)}{Style.RESET_ALL} subtitle(s) for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}")
                         results = hash_results
                     else:
-                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] No hash matches, falling back to text search{Style.RESET_ALL}")
+                        print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH] No results found{Style.RESET_ALL}")
                         response = None
                 else:
-                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash search failed (HTTP {response.status_code}), falling back to text search{Style.RESET_ALL}")
+                    print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH] Search failed (HTTP {response.status_code}){Style.RESET_ALL}")
                     response = None
             except Exception as e:
-                print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH SEARCH] Hash calculation failed ({str(e)}), falling back to text search{Style.RESET_ALL}")
+                print_and_log(f"{acq_tag()} {Fore.YELLOW}[HASH] Calculation failed: {str(e)}{Style.RESET_ALL}")
                 response = None
 
-        # Fallback to text-based search if hash search disabled or failed
+        # Fallback to text-based search if IMDb and hash search failed
         if not response or response.status_code != 200:
             params = {
                 "query": query,
                 "languages": lang
             }
-            print_and_log(f"\n{acq_tag()} * Search query for language '{lang}': '{display_query}'")
+            print_and_log(f"{acq_tag()} {Fore.CYAN}[TEXT SEARCH]{Style.RESET_ALL} Searching for {Fore.LIGHTYELLOW_EX}{lang.upper()}{Style.RESET_ALL}: '{Fore.WHITE}{display_query}{Style.RESET_ALL}'")
             response = requests.get(f"{API_URL}/subtitles", headers=headers, params=params)
             time.sleep(0.5)
 
@@ -1501,19 +1963,27 @@ def search_subtitles(movie_path: Path, jwt_token: str):
             if not results:  # Only get results if not already retrieved from hash search
                 data = response.json()
                 results = data.get("data", [])
-            filtered_results = filter_subtitles_by_query(results, query)
+            
+            # Debug: Log raw API results count
+            print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}→ API returned {len(results)} raw results{Style.RESET_ALL}")
+            
+            # IMDb-matched results are trusted (API already filtered by season/episode) — don't apply filename filter to them
+            trusted = [r for r in results if r['id'] in imdb_trusted_ids]
+            untrusted = [r for r in results if r['id'] not in imdb_trusted_ids]
+            filtered_untrusted = filter_subtitles_by_query(untrusted, query)
+            filtered_results = trusted + filtered_untrusted
             existing_counts, total_existing = count_existing_subtitles(movie_path, lang)
             filtered_results = [r for r in filtered_results if r['attributes'].get('download_count', 0) not in existing_counts]
             
             # Calculate how many we need to download based on extracted subtitles
-            target_downloads = TOP_DOWNLOADS
+            target_downloads = SUBTITLE_BATCH_SIZE
             if SERIES_MODE:
                 # Check for extracted subtitles for this episode
                 sxxexx_code = extract_sxxexx_code(movie_path.name)
                 if sxxexx_code:
                     extracted_count = len(list(movie_path.parent.glob(f"*.{lang}.number*.{sxxexx_code}.srt")))
                     if extracted_count > 0:
-                        target_downloads = max(0, TOP_DOWNLOADS - extracted_count)
+                        target_downloads = max(0, SUBTITLE_BATCH_SIZE - extracted_count)
                         if target_downloads == 0:
                             print_and_log(f"{acq_tag()} {Fore.GREEN}No additional downloads needed for {lang.upper()} - {extracted_count} extracted subtitles already available{Style.RESET_ALL}")
                             continue
@@ -1534,6 +2004,14 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                 for i, candidate in enumerate(top_results[:target_downloads], start=start_index):
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
+                    if quota_exceeded:
+                        return
+                # Write metadata about IMDb match status
+                write_subtitle_metadata(movie_path.parent, movie_path.stem, lang, imdb_match_found)
+                # Screen refresh after completing language downloads
+                if len(missing_langs) > 1 and lang != missing_langs[-1]:
+                    time.sleep(0.5)
+                    clear_and_print_ascii(BANNER_LINE)
                 continue
             print_and_log(f"{acq_tag()} No results with filter, trying without a filter...")
             unfiltered_results = [r for r in results if r['attributes'].get('download_count', 0) not in existing_counts]
@@ -1552,11 +2030,21 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                 for i, candidate in enumerate(top_unfiltered[:target_downloads], start=start_index):
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
+                    if quota_exceeded:
+                        return
+                # Write metadata about IMDb match status
+                write_subtitle_metadata(movie_path.parent, movie_path.stem, lang, imdb_match_found)
+                # Screen refresh after completing language downloads
+                if len(missing_langs) > 1 and lang != missing_langs[-1]:
+                    time.sleep(0.5)
+                    clear_and_print_ascii(BANNER_LINE)
                 continue
             print_and_log(f"{acq_tag()} No results without a filter, trying fallback search...")
             fallback_query = clean_title(raw_title)
-            params_fallback = dict(params)
-            params_fallback["query"] = fallback_query
+            params_fallback = {
+                "query": fallback_query,
+                "languages": lang
+            }
             response_fallback = requests.get(f"{API_URL}/subtitles", headers=headers, params=params_fallback)
             time.sleep(0.5)
             if response_fallback.status_code == 200:
@@ -1577,6 +2065,14 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                     start_index = get_next_sub_index(movie_path.parent, lang, movie_path)
                     for i, candidate in enumerate(top_fallback[:target_downloads], start=start_index):
                         download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
+                        if quota_exceeded:
+                            return
+                    # Write metadata about IMDb match status
+                    write_subtitle_metadata(movie_path.parent, movie_path.stem, lang, imdb_match_found)
+                    # Screen refresh after completing language downloads
+                    if len(missing_langs) > 1 and lang != missing_langs[-1]:
+                        time.sleep(0.5)
+                        clear_and_print_ascii(BANNER_LINE)
                     continue
             if not is_movie_language_skipped(movie_path, lang):
                 missing_queries.append((display_query, movie_path, lang))
@@ -1621,6 +2117,8 @@ def search_subtitles(movie_path: Path, jwt_token: str):
                 print_and_log(f"{acq_tag()} [POST-INDEX] get_next_sub_index returned: {start_index}")
                 for i, candidate in enumerate(top_results[:target_downloads], start=start_index):
                     download_top_subtitles([candidate], lang, movie_path.parent, jwt_token, mkv_path=movie_path, candidate_index=i)
+                    if quota_exceeded:
+                        return
         elif response.status_code == 401:
             print_and_log(f"{acq_tag()} JWT token invalid or expired. Fetching new token...")
             new_token = get_jwt_token()
@@ -1714,6 +2212,12 @@ def handle_missing_queries():
             print_and_log(f"{acq_tag()} {Fore.GREEN}*{Style.RESET_ALL} acquisition.py will now close.")
             sys.exit(0)
         return
+    print_and_log(f"\n{acq_tag()} {Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
+    print_and_log(f"{acq_tag()} {Fore.YELLOW}{Style.BRIGHT}Out of subtitle candidates.{Style.RESET_ALL} {Fore.WHITE}Low quality scores (<20) were filtered out.{Style.RESET_ALL}")
+    print_and_log(f"{acq_tag()} {Fore.WHITE}In rare cases, these might still sync reasonably well. You can now try{Style.RESET_ALL}")
+    print_and_log(f"{acq_tag()} {Fore.WHITE}loading FAILED subtitles manually when prompted for each file,{Style.RESET_ALL}")
+    print_and_log(f"{acq_tag()} {Fore.WHITE}increase the amount of subtitle candidates, or try any of the other options.{Style.RESET_ALL}")
+    print_and_log(f"{acq_tag()} {Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}\n")
     print_and_log(f"{acq_tag()} {Fore.YELLOW}No results for these search queries:{Style.RESET_ALL}\n")
     for i, (query, mkv_path, search_lang) in enumerate(missing_queries, 1):
         lang_disp = search_lang.upper()
@@ -1744,13 +2248,15 @@ def handle_missing_queries():
         clear_and_print_ascii(BANNER_LINE)
         print_and_log(f"\n{Style.BRIGHT}{Fore.CYAN}Movie [{display_idx}/{total}]{Style.RESET_ALL}")
         print_and_log(f"{acq_tag()} What to do with: '{Style.BRIGHT}{query_disp}{Style.RESET_ALL}{Fore.YELLOW}?{Style.RESET_ALL}'\nFile: {Fore.CYAN}{mkv_path.name}{Style.RESET_ALL}\n")
-        print_and_log(f"  {Fore.LIGHTBLUE_EX}1{Style.RESET_ALL} = Type in a manual search term")
-        print_and_log(f"  {Fore.RED}2{Style.RESET_ALL} = Delete mkv")
-        print_and_log(f"  {Fore.LIGHTYELLOW_EX}3{Style.RESET_ALL} = Increase global subtitle download limit (affects all languages/movies)")
-        print_and_log(f"  {Fore.YELLOW}4{Style.RESET_ALL} = Skip")
-        print_and_log(f"  {Fore.MAGENTA}5{Style.RESET_ALL} = Skip {search_lang.upper()} language and do not show again")
-        print_and_log(f"\n{Fore.LIGHTYELLOW_EX}Tip:{Style.RESET_ALL} When many subtitles are found but all fail, some may still match the audio, but are actually rejected false positives. Try testing a few failed subtitles manually, as there could be a good sync among them. Consider lowering reject_offset_threshold in the .config when you get this more often. If problems persist, then the video encoding may be incompatible. Using a different source might yield better results. More info can be found in the readme file.\n")
-        choice = input_and_log(f"Choose [{Fore.LIGHTBLUE_EX}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}/{Fore.LIGHTYELLOW_EX}3{Style.RESET_ALL}/{Fore.YELLOW}4{Style.RESET_ALL}/{Fore.MAGENTA}5{Style.RESET_ALL}]: ").strip()
+        print_and_log(f"  {Fore.LIGHTBLUE_EX}1{Style.RESET_ALL} = Type in a manual search term {Fore.LIGHTBLACK_EX}(manual search to check for subtitles){Style.RESET_ALL}")
+        print_and_log(f"  {Fore.LIGHTBLUE_EX}2{Style.RESET_ALL} = Test FAILED [{Fore.LIGHTYELLOW_EX}{search_lang.upper()}{Style.RESET_ALL}] subtitles manually {Fore.LIGHTBLACK_EX}(double check if FAILED subtitles are actually wrong){Style.RESET_ALL}")
+        print_and_log(f"  {Fore.LIGHTBLUE_EX}3{Style.RESET_ALL} = Increase global subtitle download limit {Fore.LIGHTBLACK_EX}(affects all movies/languages){Style.RESET_ALL}")
+        print_and_log(f"  {Fore.LIGHTBLUE_EX}4{Style.RESET_ALL} = Skip {Fore.LIGHTBLACK_EX}(do nothing){Style.RESET_ALL}")
+        print_and_log(f"  {Fore.LIGHTBLUE_EX}5{Style.RESET_ALL} = Skip [{Fore.LIGHTYELLOW_EX}{search_lang.upper()}{Style.RESET_ALL}] language and do not show again {Fore.LIGHTBLACK_EX}(adds movie to skipped_movies){Style.RESET_ALL}")
+        print_and_log(f"\n{Fore.LIGHTYELLOW_EX}NOTE:{Style.RESET_ALL} {Fore.WHITE}If all options are exhausted (including manual FAILED subtitle testing), no matching")
+        print_and_log(f"      subtitle may exist for your video release. Consider obtaining a different release or using")
+        print_and_log(f"      an internal bitmap-based subtitle if one was already embedded in the video file.{Style.RESET_ALL}")
+        choice = input_and_log(f"\nChoose [{Fore.LIGHTBLUE_EX}1{Style.RESET_ALL}/{Fore.LIGHTBLUE_EX}2{Style.RESET_ALL}/{Fore.LIGHTBLUE_EX}3{Style.RESET_ALL}/{Fore.LIGHTBLUE_EX}4{Style.RESET_ALL}/{Fore.LIGHTBLUE_EX}5{Style.RESET_ALL}]: ").strip()
         if choice == "1":
             print_and_log("[ACTION] User chose to type a manual search term.")
             download_successful = False
@@ -1760,11 +2266,11 @@ def handle_missing_queries():
                     clear_and_print_ascii(BANNER_LINE)
                     print_and_log(f"\n{Style.BRIGHT}{Fore.CYAN}Movie [{display_idx}/{total}]{Style.RESET_ALL}")
                     print_and_log(f"{acq_tag()} What to do with: '{Style.BRIGHT}{query_disp}{Style.RESET_ALL}{Fore.YELLOW}?{Style.RESET_ALL}'\nFile: {Fore.CYAN}{mkv_path.name}{Style.RESET_ALL}\n")
-                    print_and_log(f"  {Fore.LIGHTBLUE_EX}1{Style.RESET_ALL} = Type in a manual search term")
-                    print_and_log(f"  {Fore.RED}2{Style.RESET_ALL} = Delete mkv")
-                    print_and_log(f"  {Fore.LIGHTYELLOW_EX}3{Style.RESET_ALL} = Increase maximum download limit for this movie")
-                    print_and_log(f"  {Fore.YELLOW}4{Style.RESET_ALL} = Skip")
-                    print_and_log(f"  {Fore.MAGENTA}5{Style.RESET_ALL} = Skip and do not show again")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}1{Style.RESET_ALL} = Type in a manual search term {Fore.LIGHTBLACK_EX}(manual search to check for subtitles){Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}2{Style.RESET_ALL} = Test FAILED [{Fore.LIGHTYELLOW_EX}{search_lang.upper()}{Style.RESET_ALL}] subtitles manually {Fore.LIGHTBLACK_EX}(double check if FAILED subtitles are actually wrong){Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}3{Style.RESET_ALL} = Increase maximum download limit for this movie {Fore.LIGHTBLACK_EX}(affects all movies/languages){Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}4{Style.RESET_ALL} = Skip {Fore.LIGHTBLACK_EX}(do nothing){Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}5{Style.RESET_ALL} = Skip [{Fore.LIGHTYELLOW_EX}{search_lang.upper()}{Style.RESET_ALL}] and do not show again {Fore.LIGHTBLACK_EX}(adds movie to skipped_movies){Style.RESET_ALL}")
                     break
                 headers = {
                     "Authorization": f"Bearer {get_jwt_token()}",
@@ -1864,22 +2370,20 @@ def handle_missing_queries():
                     display_idx += 1
                     break
         elif choice == "2":
-            print_and_log("[ACTION] User chose to delete mkv.")
-            try:
-                mkv_path.unlink()
-                print_and_log(f"\n{acq_tag()} {Fore.GREEN}*{Style.RESET_ALL} {mkv_path.name} deleted.")
-                input_and_log(f"{acq_tag()} Press Enter to continue...")
-            except Exception as e:
-                print_and_log(f"\n{acq_tag()} {Fore.RED}# {Style.RESET_ALL}Could not delete {mkv_path.name}: {e}")
-                input_and_log(f"{acq_tag()} Press Enter to continue...")
-            missing_queries.remove((query, mkv_path, search_lang))
-            queries.pop(idx)
-            display_idx += 1
+            print_and_log("[ACTION] User chose to test FAILED subtitles.")
+            subtitle_accepted = test_failed_subtitles(mkv_path, search_lang, query_disp, display_idx, total)
+            if subtitle_accepted:
+                # Subtitle was accepted, remove from missing queries
+                missing_queries.remove((query, mkv_path, search_lang))
+                queries.pop(idx)
+                display_idx += 1
+            # If not accepted, continue with same query
             continue
         elif choice == "3":
             print_and_log("[ACTION] User chose to increase global download limit.")
+            print_and_log(f"{acq_tag()} {Fore.LIGHTBLACK_EX}This will first open another menu before executing.{Style.RESET_ALL}")
             while True:
-                new_limit_input = input_and_log(f"{acq_tag()} {Fore.LIGHTYELLOW_EX}Enter new global download limit (max 50){Style.RESET_ALL} (or press {Fore.LIGHTYELLOW_EX}enter{Style.RESET_ALL} to go back): ").strip()
+                new_limit_input = input_and_log(f"\n{acq_tag()} {Fore.LIGHTYELLOW_EX}Enter new global download limit (max 50){Style.RESET_ALL} (or press {Fore.LIGHTYELLOW_EX}enter{Style.RESET_ALL} to go back): ").strip()
                 if not new_limit_input:
                     print_and_log(f"{acq_tag()} {Fore.YELLOW}*{Style.RESET_ALL} Returning to menu.")
                     break
@@ -1897,11 +2401,16 @@ def handle_missing_queries():
                     else:
                         clear_and_print_ascii(BANNER_LINE)
                         print_and_log(f"\n{acq_tag()} {Fore.CYAN}Configuration Change Summary:{Style.RESET_ALL}")
-                        print_and_log(f"{acq_tag()} {Fore.YELLOW}Current global max_search_results:{Style.RESET_ALL} {MAX_SEARCH_RESULTS}")
-                        print_and_log(f"{acq_tag()} {Fore.GREEN}New global max_search_results:{Style.RESET_ALL} {new_limit}")
-                        print_and_log(f"\n{Fore.LIGHTYELLOW_EX}This will update the .config file and restart the acquisition process.{Style.RESET_ALL}")
-                        print_and_log(f"{Fore.LIGHTYELLOW_EX}Increasing max_search_results gives subservient the opportunity to download more subtitles.{Style.RESET_ALL}")
-                        print_and_log(f"{Fore.LIGHTYELLOW_EX}The new limit will apply for all movies that have yet to be synced, so not just {search_lang.upper()}.{Style.RESET_ALL}")
+                        print_and_log(f"{acq_tag()} {Fore.YELLOW}Current max_search_results:{Style.RESET_ALL} {MAX_SEARCH_RESULTS}")
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}New max_search_results:{Style.RESET_ALL} {new_limit}")
+                        print_and_log(f"\n{Fore.CYAN}What this does:{Style.RESET_ALL}")
+                        print_and_log(f"  • Increases max_search_results in .config file")
+                        print_and_log(f"  • Allows Subservient to download more subtitle candidates")
+                        print_and_log(f"  • Restarts acquisition process with new limit")
+                        print_and_log(f"\n{Fore.YELLOW}⚠ Important:{Style.RESET_ALL}")
+                        print_and_log(f"  • This affects ALL videos in the current Subservient run")
+                        print_and_log(f"  • Only recommended if you suspect relevant subtitle candidates")
+                        print_and_log(f"    (same movie name, not completely unrelated subtitles)")
                         print_and_log(f"\n{Fore.GREEN}1{Style.RESET_ALL} = Yes, update config and restart with new limit")
                         print_and_log(f"{Fore.RED}2{Style.RESET_ALL} = No, cancel and return to menu")
                         confirm_choice = input_and_log(f"\n{acq_tag()} {Fore.LIGHTYELLOW_EX}Confirm configuration change{Style.RESET_ALL} [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
@@ -1967,6 +2476,306 @@ def handle_missing_queries():
     if missing_queries:
         handle_missing_queries()
 
+def test_failed_subtitles(mkv_path: Path, search_lang: str, query_disp: str, display_idx: int, total: int):
+    """Test FAILED and DRIFT subtitles manually by loading them in VLC and allowing user to accept/reject."""
+    # In series mode, restrict to FAILED/DRIFT subtitles for this specific episode (SxxExx match)
+    if SERIES_MODE:
+        sxxexx = extract_sxxexx_code(mkv_path.name)
+        if sxxexx:
+            failed_subs = (
+                list(mkv_path.parent.glob(f"*.{search_lang}.number*.{sxxexx}.FAILED.srt")) +
+                list(mkv_path.parent.glob(f"*.{search_lang}.number*.{sxxexx}.DRIFT.srt"))
+            )
+        else:
+            failed_subs = (
+                list(mkv_path.parent.glob(f"*.{search_lang}.number*.FAILED.srt")) +
+                list(mkv_path.parent.glob(f"*.{search_lang}.number*.DRIFT.srt"))
+            )
+    else:
+        failed_subs = (
+            list(mkv_path.parent.glob(f"*.{search_lang}.number*.FAILED.srt")) +
+            list(mkv_path.parent.glob(f"*.{search_lang}.number*.DRIFT.srt"))
+        )
+    
+    # Sort by number in filename (e.g., number1, number2, number3, etc.)
+    def extract_number(sub_path):
+        match = re.search(r'\.number(\d+)\.', sub_path.name)
+        return int(match.group(1)) if match else 999999
+    
+    failed_subs = sorted(failed_subs, key=extract_number)
+    
+    if not failed_subs:
+        clear_and_print_ascii(BANNER_LINE)
+        print_and_log(f"\n{Style.BRIGHT}{Fore.CYAN}Movie [{display_idx}/{total}]{Style.RESET_ALL}")
+        print_and_log(f"{acq_tag()} {Fore.YELLOW}No FAILED subtitles found for {search_lang.upper()}{Style.RESET_ALL}")
+        input_and_log(f"{acq_tag()} Press Enter to return to main menu...")
+        return False
+    
+    # Track which subtitles have been tested and marked as bad
+    drift_meta = load_drift_subtitle_metadata(DRIFT_METADATA_FILE)
+    tested_bad = set()
+    
+    # FAILED subtitle selection menu
+    while True:
+        clear_and_print_ascii(BANNER_LINE)
+        print_and_log(f"\n{Style.BRIGHT}{Fore.CYAN}Movie [{display_idx}/{total}]{Style.RESET_ALL}")
+        print_and_log(f"{acq_tag()} {Fore.YELLOW}FAILED subtitles for: {Style.BRIGHT}{query_disp}{Style.RESET_ALL}")
+        print_and_log(f"File: {Fore.CYAN}{mkv_path.name}{Style.RESET_ALL}\n")
+        
+        # Show list of FAILED subtitles
+        for i, sub in enumerate(failed_subs, 1):
+            meta = drift_meta.get(make_drift_metadata_key(sub.name))
+            if meta:
+                if meta['correlation'] > 0:
+                    q_str = f"  {Fore.LIGHTYELLOW_EX}Q:{int(meta['quality'])}/100{Style.RESET_ALL}"
+                    c_str = f"  {Fore.CYAN}C:{meta['correlation']:.0f}{Style.RESET_ALL}"
+                    bonus_str = f"  {Fore.LIGHTMAGENTA_EX}+{meta['bonus']}{Style.RESET_ALL}" if meta['bonus'] > 0 else ""
+                    rej_str = f"  {Fore.RED}(rejected){Style.RESET_ALL}" if meta.get('rejected') else ""
+                    meta_str = f"{q_str}{c_str}{bonus_str}{rej_str}"
+                else:
+                    meta_str = f"  {Fore.RED}(rejected){Style.RESET_ALL}" if meta.get('rejected') else ""
+            else:
+                meta_str = ""
+            if sub in tested_bad:
+                print_and_log(f"  {Fore.YELLOW}{i}{Style.RESET_ALL} = {Fore.LIGHTBLACK_EX}{sub.name}{Style.RESET_ALL}{meta_str}  {Fore.RED}(already tested){Style.RESET_ALL}")
+            else:
+                print_and_log(f"  {Fore.YELLOW}{i}{Style.RESET_ALL} = {Fore.LIGHTRED_EX}{sub.name}{Style.RESET_ALL}{meta_str}")
+        
+        print_and_log(f"\n{Fore.LIGHTYELLOW_EX}Please select a subtitle number.{Style.RESET_ALL}")
+        print_and_log(f"{Fore.LIGHTYELLOW_EX}This will try opening your default video player loaded with the chosen subtitle.{Style.RESET_ALL}")
+        print_and_log(f"\n  {Fore.YELLOW}0{Style.RESET_ALL} = Return to main menu")
+        
+        choice = input_and_log(f"\nChoose [1-{len(failed_subs)}/0]: ").strip()
+        
+        if choice == "0":
+            return False
+        
+        try:
+            idx = int(choice)
+            if 1 <= idx <= len(failed_subs):
+                selected_sub = failed_subs[idx - 1]
+                
+                # Open VLC with selected subtitle
+                opened_with_vlc = False
+                vlc_method = ""
+                try:
+                    # Try VLC first (can auto-load subtitle)
+                    vlc_path = shutil.which("vlc")
+                    
+                    # If not in PATH, try common Windows installation paths
+                    if not vlc_path:
+                        common_paths = [
+                            r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+                            r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe"
+                        ]
+                        for path in common_paths:
+                            if Path(path).exists():
+                                vlc_path = path
+                                break
+                    
+                    if vlc_path:
+                        subprocess.Popen([vlc_path, str(mkv_path), f':sub-file={str(selected_sub)}', '--no-sub-autodetect-file'], 
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        opened_with_vlc = True
+                        vlc_method = "vlc"
+                    else:
+                        # Fallback to default video player (Windows)
+                        os.startfile(str(mkv_path))
+                        vlc_method = "default"
+                except FileNotFoundError:
+                    # VLC not found - show detailed error screen
+                    clear_and_print_ascii(BANNER_LINE)
+                    print_and_log(f"\n{Fore.RED}{Style.BRIGHT}╔═══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+                    print_and_log(f"{Fore.RED}{Style.BRIGHT}║  VIDEO PLAYER ERROR - Could not open video automatically     ║{Style.RESET_ALL}")
+                    print_and_log(f"{Fore.RED}{Style.BRIGHT}╚═══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+                    print_and_log(f"{Fore.CYAN}Video file:{Style.RESET_ALL}")
+                    print_and_log(f"  {mkv_path}\n")
+                    print_and_log(f"{Fore.CYAN}Subtitle file:{Style.RESET_ALL}")
+                    print_and_log(f"  {selected_sub}\n")
+                    print_and_log(f"{Fore.YELLOW}Possible causes:{Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.WHITE}•{Style.RESET_ALL} Video file is already open in another player")
+                    print_and_log(f"  {Fore.WHITE}•{Style.RESET_ALL} VLC Media Player is not installed or not in system PATH")
+                    print_and_log(f"  {Fore.WHITE}•{Style.RESET_ALL} Using a different video player (not VLC)\n")
+                    print_and_log(f"{Fore.GREEN}Solutions:{Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.WHITE}1.{Style.RESET_ALL} Close the video if it's already open somewhere")
+                    print_and_log(f"  {Fore.WHITE}2.{Style.RESET_ALL} Download and install VLC Media Player (recommended)")
+                    print_and_log(f"  {Fore.WHITE}3.{Style.RESET_ALL} Manually open the video with the subtitle file above\n")
+                    print_and_log(f"{Fore.CYAN}What would you like to do?{Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}1{Style.RESET_ALL} = Return to subtitle selection")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}2{Style.RESET_ALL} = I will test the subtitle manually, please continue")
+                    
+                    error_choice = input_and_log(f"\nChoose [1/2]: ").strip()
+                    if error_choice == "1":
+                        continue  # Back to subtitle selection
+                    elif error_choice == "2":
+                        # User will test manually, proceed to assessment menu
+                        pass  # Continue to assessment menu below
+                    else:
+                        continue  # Invalid choice, back to selection
+                except Exception as e:
+                    # Other errors
+                    clear_and_print_ascii(BANNER_LINE)
+                    print_and_log(f"\n{Fore.RED}{Style.BRIGHT}╔═══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+                    print_and_log(f"{Fore.RED}{Style.BRIGHT}║  ERROR - Could not open video player                         ║{Style.RESET_ALL}")
+                    print_and_log(f"{Fore.RED}{Style.BRIGHT}╚═══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}\n")
+                    print_and_log(f"{Fore.CYAN}Video file:{Style.RESET_ALL} {mkv_path}")
+                    print_and_log(f"{Fore.CYAN}Subtitle file:{Style.RESET_ALL} {selected_sub}")
+                    print_and_log(f"{Fore.RED}Error:{Style.RESET_ALL} {str(e)}\n")
+                    print_and_log(f"{Fore.YELLOW}Please ensure the video file is not open and VLC is installed.{Style.RESET_ALL}\n")
+                    print_and_log(f"{Fore.CYAN}What would you like to do?{Style.RESET_ALL}")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}1{Style.RESET_ALL} = Return to subtitle selection")
+                    print_and_log(f"  {Fore.LIGHTBLUE_EX}2{Style.RESET_ALL} = I will test the subtitle manually, please continue")
+                    
+                    error_choice = input_and_log(f"\nChoose [1/2]: ").strip()
+                    if error_choice == "1":
+                        continue  # Back to subtitle selection
+                    elif error_choice == "2":
+                        # User will test manually, proceed to assessment menu
+                        pass  # Continue to assessment menu below
+                    else:
+                        continue  # Invalid choice, back to selection
+                
+                # Assessment menu
+                clear_and_print_ascii(BANNER_LINE)
+                print_and_log(f"\n{Style.BRIGHT}{Fore.CYAN}Movie [{display_idx}/{total}]{Style.RESET_ALL}")
+                
+                # Show status based on how video was opened
+                if vlc_method == "vlc":
+                    print_and_log(f"{Fore.GREEN}✓ Video opened in VLC with subtitle auto-loaded{Style.RESET_ALL}")
+                elif vlc_method == "default":
+                    print_and_log(f"{Fore.YELLOW}⚠ VLC not found - video opened in default player{Style.RESET_ALL}")
+                    print_and_log(f"{Fore.YELLOW}  Subtitle NOT auto-loaded. Please load manually:{Style.RESET_ALL}")
+                    print_and_log(f"{Fore.CYAN}  {selected_sub.name}{Style.RESET_ALL}")
+                
+                print_and_log(f"\n{acq_tag()} {Fore.CYAN}Testing: {selected_sub.name}{Style.RESET_ALL}\n")
+                print_and_log(f"{Fore.LIGHTYELLOW_EX}Check if the subtitle matches. Press {Fore.GREEN}1{Fore.LIGHTYELLOW_EX} if correct, {Fore.YELLOW}2{Fore.LIGHTYELLOW_EX} if adjustable, or {Fore.RED}3{Fore.LIGHTYELLOW_EX} if unusable.{Style.RESET_ALL}\n")
+                print_and_log(f"  {Fore.GREEN}1{Style.RESET_ALL} = Subtitle is correct - Accept and continue")
+                print_and_log(f"  {Fore.YELLOW}2{Style.RESET_ALL} = Has potential - Needs offset adjustment")
+                print_and_log(f"  {Fore.RED}3{Style.RESET_ALL} = Subtitle is bad - Return to selection")
+                
+                assess = input_and_log(f"\nChoose [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.YELLOW}2{Style.RESET_ALL}/{Fore.RED}3{Style.RESET_ALL}]: ").strip()
+                
+                if assess == "1":
+                    # Accept subtitle - rename to correct format
+                    correct_name = f"{mkv_path.stem}.{search_lang}.srt"
+                    correct_path = mkv_path.parent / correct_name
+                    
+                    try:
+                        selected_sub.replace(correct_path)
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}✓ Subtitle accepted and renamed to {correct_name}{Style.RESET_ALL}")
+                        time.sleep(1.5)
+                        return True  # Subtitle accepted, exit menu
+                    except Exception as e:
+                        print_and_log(f"{acq_tag()} {Fore.RED}Error renaming subtitle: {e}{Style.RESET_ALL}")
+                        input_and_log(f"{acq_tag()} Press Enter to continue...")
+                        continue
+                
+                elif assess == "2":
+                    # Has potential - add to movies_with_linear_offset.txt
+                    correct_name = f"{mkv_path.stem}.{search_lang}.srt"
+                    correct_path = mkv_path.parent / correct_name
+                    
+                    try:
+                        selected_sub.replace(correct_path)
+                    except Exception as e:
+                        print_and_log(f"{acq_tag()} {Fore.RED}Error renaming subtitle: {e}{Style.RESET_ALL}")
+                        input_and_log(f"{acq_tag()} Press Enter to continue...")
+                        continue
+                    
+                    # Read first line for metadata
+                    try:
+                        with correct_path.open('r', encoding='utf-8', errors='ignore') as f:
+                            lines = [l.strip() for l in f if l.strip() and not l.strip().isdigit()]
+                            first_line = lines[0] if lines else ""
+                    except:
+                        first_line = ""
+                    
+                    # Check IMDb match status from .subtitle_metadata.txt
+                    imdb_match_status = "unknown"
+                    metadata_file = SNAPSHOT_DIR / ".subtitle_metadata.txt"
+                    if metadata_file.exists():
+                        try:
+                            with metadata_file.open('r', encoding='utf-8') as f:
+                                for line in f:
+                                    if '|' in line:
+                                        parts = line.strip().split('|')
+                                        if len(parts) >= 3:
+                                            if parts[0] == mkv_path.stem and parts[1] == search_lang:
+                                                imdb_match_status = "yes" if parts[2] == "imdb_match" else "no"
+                                                break
+                        except Exception:
+                            pass
+                    
+                    # Create entry for movies_with_linear_offset.txt
+                    # Format must match what synchronisation.py's parser expects:
+                    # line0: title [LANG], line1: folder, line2: video.mkv,
+                    # line3: subtitle.srt, line4: offset, line5: correlation,
+                    # line6: timestamp/first_line, line7: orig_numbered, then metadata
+                    offset_file = SNAPSHOT_DIR / 'movies_with_linear_offset.txt'
+                    
+                    entry = f"{mkv_path.stem} [{search_lang.upper()}]\n"
+                    entry += f"{str(mkv_path.parent)}\n"
+                    entry += f"{mkv_path.name}\n"
+                    entry += f"{correct_name}\n"
+                    entry += f"0.000\n"  # User will adjust manually
+                    entry += f"N/A\n"   # Correlation unknown from FAILED subtitle
+                    entry += f"{first_line[:100]}\n"
+                    entry += f"{correct_name}\n"  # orig_numbered placeholder
+                    entry += f"Rejected: 0\n"
+                    entry += f"IMDb_match: {imdb_match_status}\n"
+                    entry += f"Quality: Manual Test (from FAILED)\n"
+                    
+                    # Read existing content
+                    if offset_file.exists():
+                        with offset_file.open('r', encoding='utf-8') as f:
+                            existing_content = f.read()
+                        if '\n--\n' in existing_content:
+                            header = existing_content.split('\n--\n', 1)[0] + '\n--\n'
+                            existing_entries = existing_content.split('\n--\n')[1:]
+                        else:
+                            header = "Linear offset tracking file for movies with subtitle sync corrections.\n"
+                            header += "Format: movie name, path, offset, timestamp, first line, rejected count\n--\n"
+                            existing_entries = []
+                    else:
+                        header = "Linear offset tracking file for movies with subtitle sync corrections.\n"
+                        header += "Format: movie name, path, offset, timestamp, first line, rejected count\n--\n"
+                        existing_entries = []
+                    
+                    # Write with new entry at top
+                    with offset_file.open('w', encoding='utf-8') as f:
+                        f.write(header)
+                        f.write(entry)
+                        f.write("\n--\n")
+                        for existing in existing_entries:
+                            if existing.strip():
+                                f.write(existing.strip())
+                                f.write("\n--\n")
+                    
+                    # Show confirmation
+                    clear_and_print_ascii(BANNER_LINE)
+                    print_and_log(f"\n{acq_tag()} {Fore.GREEN}✓ Subtitle saved and added to manual offset queue{Style.RESET_ALL}\n")
+                    print_and_log(f"{Fore.CYAN}Next steps:{Style.RESET_ALL}")
+                    print_and_log(f"  1. The subtitle will appear in the manual offset verification menu")
+                    print_and_log(f"  2. You'll be able to adjust the offset in the editor")
+                    print_and_log(f"  3. Changes will be applied when you save and exit the editor\n")
+                    input_and_log(f"Press Enter to continue...")
+                    return True  # Subtitle added to queue, exit menu
+                
+                elif assess == "3":
+                    # Bad subtitle - mark as tested and return to selection
+                    tested_bad.add(selected_sub)
+                    continue
+                else:
+                    print_and_log(f"{acq_tag()} {Fore.RED}Invalid choice.{Style.RESET_ALL}")
+                    input_and_log(f"{acq_tag()} Press Enter to continue...")
+                    continue
+            else:
+                print_and_log(f"{acq_tag()} {Fore.RED}Invalid number.{Style.RESET_ALL}")
+                input_and_log(f"{acq_tag()} Press Enter to continue...")
+        except ValueError:
+            print_and_log(f"{acq_tag()} {Fore.RED}Invalid input.{Style.RESET_ALL}")
+            input_and_log(f"{acq_tag()} Press Enter to continue...")
+
 def input_and_log(prompt):
     print_and_log(prompt, end='')
     answer = input('')
@@ -1975,7 +2784,7 @@ def input_and_log(prompt):
     return answer
 
 def get_video_files_for_folder(folder: Path) -> list[Path]:
-    video_files = [*folder.glob('*.mkv'), *folder.glob('*.mp4')]
+    video_files = [*folder.glob('*.mkv'), *folder.glob('*.mp4'), *folder.glob('*.avi')]
     if SERIES_MODE:
         return sorted(video_files)
     return [max(video_files, key=lambda f: f.stat().st_size)] if video_files else []
@@ -2031,19 +2840,36 @@ def extract_subtitles_from_predownloaded_folders(video_folder: Path, video_files
         else:
             source_dir = subtitle_item
         
+        # Extract season number from the subtitle folder name (e.g. SUBTITLES.S02.EN -> S02)
+        _season_match = re.search(r'subtitles\.(s\d{2})', subtitle_item.name, re.IGNORECASE)
+        folder_season = _season_match.group(1).upper() if _season_match else 'S01'
+
         try:
-            # Process each episode folder inside the subtitle folder
-            for episode_folder in source_dir.iterdir():
-                if not episode_folder.is_dir():
+            # Collect episode folders, handling optional "Season X" / "Seizoen X" subfolder
+            episode_dirs = []
+            for _item in source_dir.iterdir():
+                if not _item.is_dir():
                     continue
-                
+                if re.search(r'episode\s*\d+', _item.name, re.IGNORECASE):
+                    episode_dirs.append(_item)
+                elif re.search(r'(season|seizoen)\s*\d+', _item.name, re.IGNORECASE):
+                    # Drill one level deeper into Season X subfolder
+                    for _sub in _item.iterdir():
+                        if _sub.is_dir() and re.search(r'episode\s*\d+', _sub.name, re.IGNORECASE):
+                            episode_dirs.append(_sub)
+
+            if not episode_dirs:
+                print_and_log(f"{acq_tag()} {Fore.YELLOW}No episode folders found in {subtitle_item.name}{Style.RESET_ALL}")
+
+            # Process each episode folder inside the subtitle folder
+            for episode_folder in episode_dirs:
                 # Try to extract episode number from folder name (episode 1, episode 01, etc.)
                 episode_match = re.search(r'episode\s*(\d{1,2})', episode_folder.name, re.IGNORECASE)
                 if not episode_match:
                     continue
                 
                 episode_num = int(episode_match.group(1))
-                episode_sxxexx = f"S01E{episode_num:02d}"  # Assume season 1 for now, can be made smarter later
+                episode_sxxexx = f"{folder_season}E{episode_num:02d}"
                 
                 # Find corresponding video file
                 matching_video = None
@@ -2205,14 +3031,18 @@ def rename_extracted_subtitles_to_sync_format(video_folder: Path, video_files: l
     # Find all extracted subtitle files (non-synchronized ones)  
     subtitle_files = []
     for srt_file in video_folder.glob('*.srt'):
+        # Language-prefixed files (EN_/NL_/etc.) are always from pre-downloaded folders — process first
+        if srt_file.name.startswith(('EN_', 'NL_', 'FR_', 'DE_', 'ES_')):
+            subtitle_files.append(srt_file)
+            continue
         # Skip already synchronized subtitles (video_name.lang.srt format)
         if re.match(r'^.+\.[a-z]{2}\.srt$', srt_file.name, re.IGNORECASE):
             continue
         # Skip already numbered subtitles (avoid double processing)
         if re.match(r'^P?\d+\.[a-z]{2}\.number\d+\.S\d{2}E\d{2}\.srt$', srt_file.name, re.IGNORECASE):
             continue
-        # Only process files that have SxxExx patterns OR language prefixes
-        if has_sxxexx_pattern(srt_file.name) or srt_file.name.startswith(('EN_', 'NL_', 'FR_', 'DE_', 'ES_')):
+        # Process files that have SxxExx patterns
+        if has_sxxexx_pattern(srt_file.name):
             subtitle_files.append(srt_file)
 
     if not subtitle_files:
@@ -2317,12 +3147,29 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
     incomplete_folders = []
     wrong_language_folders = []
     unrecognized_folders = []
-    
+    packed_archives = []
+
+    # Archive extensions that indicate an unpacked subtitle folder
+    PACKED_EXTENSIONS = {'.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tar.gz', '.tar.bz2', '.tar.xz', '.tgz', '.tbz2', '.cab', '.iso', '.ace', '.arj', '.lzh', '.lha', '.zst', '.tar.zst'}
+
     # Get configured languages (convert to uppercase for comparison)
     configured_languages = [lang.upper() for lang in LANGUAGES]
     
     for item in video_folder.iterdir():
         item_name_lower = item.name.lower()
+
+        # Check for packed archives that look like subtitle folders (before other checks)
+        if item.is_file():
+            # Build the full lowercased name and check for any packed extension
+            _is_packed = False
+            for _ext in PACKED_EXTENSIONS:
+                if item_name_lower.endswith(_ext):
+                    _is_packed = True
+                    break
+            if _is_packed:
+                packed_archives.append(item.name)
+                continue
+
         if (item.is_dir() or item.name.lower().endswith('.zip')):
             if item_name_lower.startswith('subtitles.s'):
                 # Extract season from folder name using regex
@@ -2369,10 +3216,25 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
                 unrecognized_folders.append(item.name)
     
     # Show errors if any problems found
-    if wrong_season_folders or incomplete_folders or wrong_language_folders or unrecognized_folders:
+    if packed_archives or wrong_season_folders or incomplete_folders or wrong_language_folders or unrecognized_folders:
         clear_and_print_ascii(BANNER_LINE)
         print_and_log(f"{Fore.RED}{Style.BRIGHT}[ERROR] Subtitle Folder Configuration Error!{Style.RESET_ALL}")
         print_and_log("")
+
+        if packed_archives:
+            print_and_log(f"Archive file(s) found that appear to be subtitle folders, but have not been extracted yet:")
+            print_and_log("")
+            print_and_log(f"{Fore.RED}Packed/compressed archives:{Style.RESET_ALL}")
+            for archive_name in packed_archives:
+                print_and_log(f"  - {archive_name} (in {video_folder})")
+            print_and_log("")
+            print_and_log(f"{Fore.YELLOW}These files need to be extracted before Subservient can use them.{Style.RESET_ALL}")
+            print_and_log(f"{Fore.YELLOW}After extracting, rename the resulting folder to match the required format:{Style.RESET_ALL}")
+            print_and_log(f"{Fore.YELLOW}Required format:{Style.RESET_ALL} SUBTITLES.{expected_season}.LANGUAGE")
+            print_and_log(f"{Fore.YELLOW}Examples:{Style.RESET_ALL} SUBTITLES.{expected_season}.EN, SUBTITLES.{expected_season}.NL")
+            print_and_log("")
+            print_and_log(f"{Fore.YELLOW}If this is not a subtitle archive, remove it from the folder or add it to skip_dirs in .config.{Style.RESET_ALL}")
+            print_and_log("")
         
         if unrecognized_folders:
             print_and_log(f"Folder(s) found that might be subtitle folders but don't follow naming convention:")
@@ -2426,8 +3288,6 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
         print_and_log(f"{Fore.RED}Subservient in TV-Series mode cannot proceed with improper folder configuration.{Style.RESET_ALL}")
         
         exit_with_prompt("Press Enter to exit...")
-    
-    # If we get here, either no subtitle folders found or all are correctly named
     if subtitle_folders:
         print_and_log(f"{acq_tag()} {Fore.GREEN}Subtitle folder configuration is valid{Style.RESET_ALL}")
         
@@ -2448,6 +3308,7 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
         print_and_log(f"{acq_tag()} {Fore.CYAN}No subtitle folders found - normal download mode{Style.RESET_ALL}")
 
 def process_folder(folder: Path, scanned_folders: set, jwt_token: str, skipped_movies: set, idx_offset=0, total_videos=None, video_idx_start=1):
+    global quota_exceeded
     video_files = get_video_files_for_folder(folder)
     processed = 0
     if not video_files:
@@ -2466,9 +3327,14 @@ def process_folder(folder: Path, scanned_folders: set, jwt_token: str, skipped_m
         if all_languages_skipped:
             print_and_log(f"{acq_tag()} {Fore.MAGENTA}*{Style.RESET_ALL} Skipping {video_file.name} (all languages marked as 'do not show again').")
             continue
+        
+        # Always show video header with screen refresh
+        clear_and_print_ascii(BANNER_LINE)
         if total_videos is not None:
-            clear_and_print_ascii(BANNER_LINE)
             print_video_header(video_file.stem, idx_offset + i, total_videos)
+        else:
+            # Single video mode - show [1/1]
+            print_video_header(video_file.stem, 1, 1)
             
         # Use the proper check_existing_subtitles function that handles both standard and series naming
         # Check without verbose logging (detailed check will happen in search_subtitles)
@@ -2482,6 +3348,18 @@ def process_folder(folder: Path, scanned_folders: set, jwt_token: str, skipped_m
         search_subtitles(video_file, jwt_token)
         print_and_log(f"---\n")
         processed += 1
+
+        # Check if quota was hit during this video's downloads
+        if quota_exceeded:
+            while show_quota_exceeded_screen():
+                # User chose Retry — reset flag and re-process this video
+                quota_exceeded = False
+                search_subtitles(video_file, jwt_token)
+                if not quota_exceeded:
+                    break  # Download succeeded, continue with remaining videos
+            if quota_exceeded:
+                return processed  # User exited via the screen
+
     return processed
 
 def ensure_initial_setup():

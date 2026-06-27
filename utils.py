@@ -7,6 +7,65 @@ import time
 import re
 import shutil
 
+def set_console_size(cols=120, lines=40):
+    """Set the console window size. Only has effect on Windows conhost (cmd.exe).
+    Has no effect in Windows Terminal, which manages its own window size.
+    Values are read from .config (console_width / console_height) when available."""
+    if os.name != 'nt':
+        return
+    # Try to read from config
+    try:
+        config_path = get_subservient_folder() / '.config'
+        if config_path.exists():
+            for line in config_path.read_text(encoding='utf-8').splitlines():
+                line = line.strip()
+                if line.startswith('console_width='):
+                    cols = int(line.split('=', 1)[1].strip())
+                elif line.startswith('console_height='):
+                    lines = int(line.split('=', 1)[1].strip())
+    except Exception:
+        pass
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        import ctypes.wintypes as wintypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE... use output
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+
+        # Set screen buffer size
+        class COORD(ctypes.Structure):
+            _fields_ = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
+        class SMALL_RECT(ctypes.Structure):
+            _fields_ = [("Left", wintypes.SHORT), ("Top", wintypes.SHORT),
+                        ("Right", wintypes.SHORT), ("Bottom", wintypes.SHORT)]
+        class CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
+            _fields_ = [("dwSize", COORD), ("dwCursorPosition", COORD),
+                        ("wAttributes", wintypes.WORD),
+                        ("srWindow", SMALL_RECT), ("dwMaximumWindowSize", COORD)]
+
+        info = CONSOLE_SCREEN_BUFFER_INFO()
+        kernel32.GetConsoleScreenBufferInfo(handle, ctypes.byref(info))
+
+        # First shrink the window to avoid buffer-smaller-than-window errors
+        small_rect = SMALL_RECT(0, 0, 1, 1)
+        kernel32.SetConsoleWindowInfo(handle, True, ctypes.byref(small_rect))
+
+        # Set buffer size
+        buf_size = COORD(cols, max(lines, 9000))
+        kernel32.SetConsoleScreenBufferSize(handle, buf_size)
+
+        # Set window size
+        win_rect = SMALL_RECT(0, 0, cols - 1, lines - 1)
+        kernel32.SetConsoleWindowInfo(handle, True, ctypes.byref(win_rect))
+    except Exception:
+        # Fallback for classic cmd.exe
+        try:
+            os.system(f"mode con: cols={cols} lines={lines}")
+        except Exception:
+            pass
+
 def clean_display_name(filename, config_path=None):
     """Clean video/subtitle filename for display by removing unwanted terms."""
     if not filename:
@@ -271,6 +330,10 @@ def scan_subtitle_coverage(videos, languages, series_mode=False, show_progress=T
     for idx, video in enumerate(videos, 1):
         video_path = Path(video)
         video_name = trim_movie_name(video_path.name)
+        if series_mode:
+            _sxxexx = extract_sxxexx_code(video_path.name)
+            if _sxxexx:
+                video_name = f"{video_name} {_sxxexx.upper()}"
         if show_progress:
             if sync_tag_func:
                 clear_and_print_ascii("                   [Phase 4/4] Subtitle Synchronisation")
@@ -317,10 +380,24 @@ def scan_subtitle_coverage(videos, languages, series_mode=False, show_progress=T
     
     return coverage_results
 
-def display_coverage_results(coverage_results, languages, banner_line=None, return_to_menu=True, logger_func=None, sync_tag_func=None):
+def display_coverage_results(coverage_results, languages, banner_line=None, return_to_menu=True, logger_func=None, sync_tag_func=None, series_mode=False):
     """Display formatted subtitle coverage report with statistics."""
     log_func = logger_func if logger_func else print
     tag_func = sync_tag_func if sync_tag_func else lambda: ""
+
+    # Sort episodes within each series group (preserving series order)
+    if series_mode and coverage_results:
+        from collections import OrderedDict
+        groups = OrderedDict()
+        for item in coverage_results:
+            _vpath, _vname, _cov = item
+            _base = re.sub(r'\s+[Ss]\d{2}[Ee]\d{2}.*', '', _vname).strip()
+            groups.setdefault(_base, []).append(item)
+        coverage_results = []
+        for _items in groups.values():
+            _items.sort(key=lambda x: extract_sxxexx_code(Path(x[0]).name) or '')
+            coverage_results.extend(_items)
+
     if banner_line:
         clear_and_print_ascii(banner_line)
     else:
@@ -378,8 +455,8 @@ def display_coverage_results(coverage_results, languages, banner_line=None, retu
         # Check run_counter to decide if INFO screen should be shown
         run_counter = get_run_counter_from_config()
         
-        # Only show INFO screen on first run (run_counter < 2)
-        if run_counter < 2:
+        # INFO screen disabled
+        if False and run_counter < 2:
             # Show INFO section on new screen
             if banner_line:
                 clear_and_print_ascii(banner_line)
@@ -388,24 +465,19 @@ def display_coverage_results(coverage_results, languages, banner_line=None, retu
             
             time.sleep(1)
             log_func(f"\n{Style.BRIGHT}INFO:{Style.RESET_ALL} If all your movies show {Fore.GREEN}external .SRT files{Style.RESET_ALL} or you're satisfied with {Fore.YELLOW}internal subtitles{Style.RESET_ALL}, you're all set!\n")
-            
-            log_func(f"{Fore.LIGHTYELLOW_EX}However, if some movies only have internal subtitles or missing subtitles, here's what you should know:{Style.RESET_ALL}")
-            log_func(f"• Movies with long silences, background noise, or non-English dialogue can be challenging for AI synchronization.")
-            log_func(f"• The AI may incorrectly flag perfectly good subtitles as 'out of sync' (false positives).")
+
+            log_func(f"{Fore.LIGHTYELLOW_EX}If a subtitle ended up as {Fore.RED}missing{Fore.LIGHTYELLOW_EX} or only {Fore.YELLOW}internal{Fore.LIGHTYELLOW_EX}, Subservient has already tried multiple candidates automatically.{Style.RESET_ALL}")
+            log_func(f"In rare cases none of the downloaded candidates synced well enough — those are marked as {Fore.YELLOW}DRIFT{Style.RESET_ALL}.")
             log_func("")
-            
-            log_func(f"These rare cases are easy to spot: ALL subtitles for a movie show as 'internal only' or 'missing' for ALL languages.")
-            log_func(f"When you see this pattern, it's usually the AI being overly cautious, not a real sync problem!")
+
+            log_func(f"{Fore.LIGHTYELLOW_EX}What you can do:{Style.RESET_ALL}")
+            log_func(f"{Fore.CYAN}1.{Style.RESET_ALL} Run Subservient again — during the {Fore.YELLOW}manual verification{Style.RESET_ALL} step you can browse all DRIFT candidates")
+            log_func(f"   and pick one that looks good, without downloading anything new.")
+            log_func(f"{Fore.CYAN}2.{Style.RESET_ALL} If none of the DRIFT candidates work either, Subservient will automatically")
+            log_func(f"   start a new acquisition run to fetch fresh subtitles.")
             log_func("")
-            
-            log_func(f"{Fore.LIGHTYELLOW_EX}If any movie shows only internal subtitles or missing subtitles, then delete those subtitles and:{Style.RESET_ALL}")
-            log_func(f"{Fore.CYAN}1.{Style.RESET_ALL} Run acquisition.py to download fresh subtitles")
-            log_func(f"{Fore.CYAN}2.{Style.RESET_ALL} Exit before synchronisation.py starts")
-            log_func(f"{Fore.CYAN}3.{Style.RESET_ALL} Manually check the downloaded subtitles - they're often perfectly synced already!")
-            log_func(f"{Fore.CYAN}4.{Style.RESET_ALL} Simply rename them to match your video (e.g., 'MovieName.en.srt')")
-            log_func("")
-            
-            log_func(f"{Fore.GREEN}By recognizing this pattern, even the last few rare subtitles that Subservient misinterprets won't slip past you!{Style.RESET_ALL}")
+
+            log_func(f"{Fore.GREEN}In most cases everything is handled automatically — this screen is just here to explain the rare exceptions.{Style.RESET_ALL}")
             
             if return_to_menu:
                 input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
@@ -2014,3 +2086,110 @@ def validate_series_naming(local_path, config_path=None):
         'total_files_checked': len(all_problematic_files) + len(all_good_files),
         'files_needing_rename': len([f for f in all_good_files if f.get('needs_rename', False)])
     }
+
+
+def make_drift_metadata_key(filename: str) -> str:
+    """Extract a stable matching key from a DRIFT/FAILED subtitle filename.
+
+    Works for:  166587.en.number1.S06E02.srt
+                166587.en.number1.S06E02.DRIFT.srt
+                166587.en.number1.S06E02.FAILED.srt
+    Returns: '166587.en.number1'  (download_count.lang.numberN)
+    """
+    parts = filename.split('.')
+    if len(parts) >= 3:
+        return f"{parts[0]}.{parts[1]}.{parts[2]}"
+    return filename
+
+
+def save_drift_subtitle_metadata(metadata_path: str, sub_path: str, quality_score: float,
+                                  correlation_score: float, bonus: int, offset: float,
+                                  rejected: bool = False):
+    """Save sync quality metadata for a batch DRIFT candidate.
+
+    Writes to the file at metadata_path (full path).
+    Key = download_count.lang.numberN, so it matches both DRIFT and FAILED filenames.
+    """
+    key = make_drift_metadata_key(os.path.basename(sub_path))
+    metadata_file = metadata_path
+    existing = {}
+    if os.path.exists(metadata_file):
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    parts = line.split('|')
+                    if len(parts) >= 5:
+                        existing[parts[0]] = line
+        except Exception:
+            pass
+    rejected_flag = '1' if rejected else '0'
+    existing[key] = f"{key}|{quality_score:.1f}|{correlation_score:.1f}|{bonus}|{offset:.4f}|{rejected_flag}"
+    try:
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            f.write("# Drift/Failed subtitle metadata - auto-generated by Subservient\n")
+            for entry_line in existing.values():
+                f.write(entry_line + "\n")
+    except Exception:
+        pass
+
+
+def load_drift_subtitle_metadata(metadata_path: str) -> dict:
+    """Load sync quality metadata from the file at metadata_path (full path).
+
+    Returns dict mapping key (download_count.lang.numberN) to:
+        {'quality': float, 'correlation': float, 'bonus': int, 'offset': float, 'rejected': bool}
+    """
+    metadata_file = metadata_path
+    result = {}
+    if not os.path.exists(metadata_file):
+        return result
+    try:
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split('|')
+                if len(parts) >= 5:
+                    result[parts[0]] = {
+                        'quality': float(parts[1]),
+                        'correlation': float(parts[2]),
+                        'bonus': int(parts[3]),
+                        'offset': float(parts[4]),
+                        'rejected': len(parts) >= 6 and parts[5] == '1'
+                    }
+    except Exception:
+        pass
+    return result
+
+
+def clean_drift_subtitle_metadata(metadata_path: str, keys_to_remove: set):
+    """Remove specific entries from the metadata file at metadata_path (full path).
+
+    Deletes the file entirely if no entries remain.
+    """
+    metadata_file = metadata_path
+    if not os.path.exists(metadata_file):
+        return
+    try:
+        remaining = {}
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split('|')
+                if parts[0] not in keys_to_remove:
+                    remaining[parts[0]] = line
+        if not remaining:
+            os.remove(metadata_file)
+        else:
+            with open(metadata_file, 'w', encoding='utf-8') as f:
+                f.write("# Drift/Failed subtitle metadata - auto-generated by Subservient\n")
+                for entry_line in remaining.values():
+                    f.write(entry_line + "\n")
+    except Exception:
+        pass

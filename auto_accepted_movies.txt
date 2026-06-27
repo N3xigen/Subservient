@@ -1,0 +1,81 @@
+Auto-accepted subtitles from Smart Sync
+Format: Movie Name (Year) [LANG] | offset | correlation_score
+================================================================================
+
+Game.of.Thrones.S08E06.The.Iron.Throne.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E06 [EN] | 0.030s | 306845
+Game.of.Thrones.S08E05.The.Bells.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E05 [EN] | 0.050s | 268750
+Game.of.Thrones.S08E06.The.Iron.Throne.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E06 [NL] | 0.040s | 259117
+Game of Thrones S07E07 The Dragon and the Wolf 4K.mkv S07E07 [EN] | 0.010s | 241925
+Game of Thrones S07E07 The Dragon and the Wolf 4K.mkv S07E07 [NL] | 0.010s | 241584
+Game.of.Thrones.S08E04.The.Last.of.the.Starks.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E04 [EN] | 0.020s | 248673
+Game of Thrones S07E06 Beyond the Wall 4K.mkv S07E06 [EN] | 0.040s | 231456
+Game of Thrones S06E09 Battle of the Bastards 4K.mkv S06E09 [EN] | 0.000s | 202520
+Game.of.Thrones.S08E05.The.Bells.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E05 [NL] | 0.080s | 242302
+Game of Thrones S02E10 Valar Morghulis  [2160p x265 10bit Joy] (1).mkv S02E10 [EN] | 0.000s | 194812
+GoT S01E01 Winter Is Coming  (2160p x265 10bit S85 Joy) (1).mkv S01E01 [EN] | 0.030s | 181043
+Game of Thrones S06E07 The Broken Man 4K.mkv S06E07 [EN] | 0.030s | 171523
+Game of Thrones S06E10 The Winds of Winter 4K.mkv S06E10 [NL] | 0.070s | 204375
+Game.of.Thrones.S08E04.The.Last.of.the.Starks.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E04 [NL] | 0.050s | 174012
+Game of Thrones S05E07 The Gift 4K.mkv S05E07 [EN] | 0.020s | 166980
+Game of Thrones S05E07 The Gift 4K.mkv S05E07 [NL] | 0.010s | 168547
+Game of Thrones S07E01 Dragonstone 4K.mkv S07E01 [EN] | 0.000s | 159311
+Game.of.Thrones.S08E02.A.Knight.of.the.Seven.Kingdoms.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E02 [EN] | 0.020s | 168746
+Game of Thrones S04E10 The Children 4K.mkv S04E10 [EN] | 0.070s | 178092
+Game of Thrones S05E08 Hardhome 4K.mkv S05E08 [NL] | 0.030s | 151771
+Game of Thrones S05E10 Mother's Mercy 4K.mkv S05E10 [EN] | 0.010s | 148413
+Game of Thrones S05E05 Kill the Boy 4K.mkv S05E05 [EN] | 0.030s | 143063
+Game of Thrones S05E05 Kill the Boy 4K.mkv S05E05 [NL] | 0.000s | 143891
+Game of Thrones S06E07 The Broken Man 4K.mkv S06E07 [NL] | 0.020s | 156055
+Game of Thrones S06E10 The Winds of Winter 4K.mkv S06E10 [EN] | 0.100s | 212932
+Game of Thrones S07E05 Eastwatch 4K.mkv S07E05 [EN] | 0.000s | 150940
+Game.of.Thrones.S08E01.Winterfell.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E01 [EN] | 0.020s | 152130
+GoT S01E01 Winter Is Coming  (2160p x265 10bit S85 Joy) (1).mkv S01E01 [NL] | 0.080s | 172634
+Game of Thrones S05E08 Hardhome 4K.mkv S05E08 [EN] | 0.070s | 165399
+Game of Thrones S05E03 High Sparrow 4K.mkv S05E03 [EN] | 0.040s | 131236
+Game of Thrones S05E03 High Sparrow 4K.mkv S05E03 [NL] | 0.020s | 132591
+Game of Thrones S06E09 Battle of the Bastards 4K.mkv S06E09 [NL] | 0.080s | 175438
+Game of Thrones S06E04 Book of the Stranger 4K.mkv S06E04 [EN] | 0.040s | 132291
+Game of Thrones S07E02 Stormborn 4K.mkv S07E02 [EN] | 0.020s | 133694
+Game of Thrones S07E06 Beyond the Wall 4K.mkv S07E06 [NL] | 0.014s | 139732
+Game of Thrones S02E06 The Old Gods and the New  [2160p x265 10bit Joy] (1).mkv S02E06 [EN] | 0.050s | 116486
+Game of Thrones S03E09 The Rains of Castamere  [2160p x265 10bit Joy] [EN] | 0.030s | 114789
+Game of Thrones S05E02 The House of Black and White 4K.mkv S05E02 [EN] | 0.050s | 115851
+Game of Thrones S05E02 The House of Black and White 4K.mkv S05E02 [NL] | 0.050s | 115622
+Game of Thrones S05E04 Sons of the Harpy 4K.mkv S05E04 [EN] | 0.050s | 121539
+Game of Thrones S05E06 Unbowed, Unbent, Unbroken 4K.mkv S05E06 [EN] | 0.080s | 157851
+Game of Thrones S05E09 The Dance of Dragons 4K.mkv S05E09 [EN] | 0.010s | 120410
+Game of Thrones S06E03 Oathbreaker 4K.mkv S06E03 [EN] | 0.050s | 123350
+Game of Thrones S07E03 The Queen's Justice 4K.mkv S07E03 [EN] | 0.040s | 118817
+Game.of.Thrones.S08E02.A.Knight.of.the.Seven.Kingdoms.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E02 [NL] | 0.010s | 116373
+GoT S01E06 A Golden Crown  (2160p x265 10bit S83 Joy) (1).mkv S01E06 [NL] | 0.040s | 101982
+Game of Thrones S02E02 The Night Lands  [2160p x265 10bit Joy] (1).mkv S02E02 [EN] | 0.020s | 113369
+Game of Thrones S02E09 Blackwater  [2160p x265 10bit Joy] (1).mkv S02E09 [EN] | 0.060s | 117513
+Game of Thrones S03E01 Valar Dohaeris  [2160p x265 10bit Joy] (1).mkv S03E01 [EN] | 0.050s | 110604
+Game of Thrones S04E07 Mockingbird 4K.mkv S04E07 [EN] | 0.020s | 112761
+Game of Thrones S04E04 Oathkeeper 4K.mkv S04E04 [EN] | 0.070s | 133372
+Game of Thrones S05E01 The Wars to Come 4K.mkv S05E01 [EN] | 0.050s | 107146
+Game of Thrones S05E04 Sons of the Harpy 4K.mkv S05E04 [NL] | 0.030s | 104122
+Game of Thrones S07E02 Stormborn 4K.mkv S07E02 [NL] | 0.000s | 109837
+Game of Thrones S07E04 The Spoils of War 4K.mkv S07E04 [EN] | 0.000s | 107253
+Game.of.Thrones.S08E01.Winterfell.2160p.UHD.BluRay.10bit.HDR.x265-HazMatt (1).mkv S08E01 [NL] | 0.020s | 113539
+Game of Thrones S04E01 Two Swords 4K.mkv S04E01 [EN] | 0.070s | 116311
+Game of Thrones S04E05 First of His Name 4K.mkv S04E05 [EN] | 0.040s | 97879
+Game of Thrones S05E01 The Wars to Come 4K.mkv S05E01 [NL] | 0.040s | 98373
+Game of Thrones S06E01 The Red Woman 4K.mkv S06E01 [EN] | 0.050s | 96110
+Game of Thrones S06E01 The Red Woman 4K.mkv S06E01 [NL] | 0.050s | 99185
+Game of Thrones S07E05 Eastwatch 4K.mkv S07E05 [NL] | 0.020s | 99233
+Game of Thrones S04E06 The Laws of Gods and Men 4K.mkv S04E06 [EN] | 0.030s | 92308
+Game of Thrones S05E10 Mother's Mercy 4K.mkv S05E10 [NL] | 0.100s | 149345
+GoT S01E02 The Kingsroad  (2160p x265 10bit S85 Joy) (1).mkv S01E02 [NL] | 0.090s | 125920
+Game of Thrones S04E03 Breaker of Chains 4K.mkv S04E03 [EN] | 0.080s | 100539
+Game of Thrones S06E06 Blood of My Blood 4K.mkv S06E06 [EN] | 0.010s | 88838
+Game of Thrones S06E06 Blood of My Blood 4K.mkv S06E06 [NL] | 0.010s | 90062
+Game of Thrones S05E06 Unbowed, Unbent, Unbroken 4K.mkv S05E06 [NL] | 0.150s | 155819
+Game of Thrones S05E09 The Dance of Dragons 4K.mkv S05E09 [NL] | 0.100s | 121479
+Game of Thrones S06E04 Book of the Stranger 4K.mkv S06E04 [NL] | 0.110s | 123838
+GoT S01E10 Fire and Blood  (2160p x265 10bit S90 Joy) (1).mkv S01E10 [NL] | 0.100s | 102301
+Game of Thrones S02E03 What is Dead May Never Die  [2160p x265 10bit Joy] (1).mkv S02E03 [EN] | 0.110s | 121389
+Game of Thrones S02E04 Garden of Bones  [2160p x265 10bit Joy].mkv S02E04 [EN] | 0.010s | 79517
+Game of Thrones S06E02 Home 4K.mkv S06E02 [EN] | 0.150s | 137264
+Game of Thrones S06E03 Oathbreaker 4K.mkv S06E03 [NL] | 0.130s | 125035
+Game of Thrones S07E01 Dragonstone 4K.mkv S07E01 [NL] | 0.130s | 131191

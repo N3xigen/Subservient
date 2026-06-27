@@ -4,6 +4,52 @@ import subprocess
 from datetime import datetime
 import re
 from pathlib import Path
+
+def _relaunch_in_cmd_if_windows_terminal():
+    """If running inside Windows Terminal, relaunch in a plain cmd.exe window.
+    
+    Windows Terminal ignores programmatic resize attempts. By relaunching in
+    cmd.exe we can set the window size via 'mode con' before the program starts.
+    Uses SUBSERVIENT_RELAUNCHED env var to prevent infinite relaunch loops.
+    """
+    if os.name != 'nt':
+        return
+    if os.environ.get('SUBSERVIENT_RELAUNCHED'):
+        return  # Already relaunched — don't loop
+    if not os.environ.get('WT_SESSION'):
+        return  # Not in Windows Terminal — nothing to do
+
+    script_path = Path(sys.argv[0]).resolve()
+    python_exe = sys.executable
+
+    # Read console size from config if available
+    cols, lines = 120, 40  # defaults
+    try:
+        config_path = script_path.parent / '.config'
+        if config_path.exists():
+            for line in config_path.read_text(encoding='utf-8').splitlines():
+                line = line.strip()
+                if line.startswith('console_width='):
+                    cols = int(line.split('=', 1)[1].strip())
+                elif line.startswith('console_height='):
+                    lines = int(line.split('=', 1)[1].strip())
+    except Exception:
+        pass
+
+    # Build cmd that sets window size, runs the script, then keeps window open
+    inner_cmd = f'mode con: cols={cols} lines={lines} & "{python_exe}" "{script_path}"'
+    env = os.environ.copy()
+    env['SUBSERVIENT_RELAUNCHED'] = '1'
+
+    subprocess.Popen(
+        ['cmd.exe', '/k', inner_cmd],
+        env=env,
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+    )
+    sys.exit(0)
+
+_relaunch_in_cmd_if_windows_terminal()
+
 try:
     from colorama import init, Fore, Style
     init(autoreset=True)
@@ -254,7 +300,7 @@ def print_subservient_checklist():
                     config[m.group(1).strip().lower()] = m.group(2).strip()
     
     series_mode = config.get('series_mode', None)
-    top_downloads = config.get('top_downloads', None)
+    subtitle_batch_size = config.get('subtitle_batch_size', None)
     delete_extra_videos = config.get('delete_extra_videos', None)
     smart_sync = config.get('smart_sync', None)
     
@@ -303,7 +349,7 @@ def print_subservient_checklist():
                         else f"{Fore.CYAN}First Match{Style.RESET_ALL}" if smart_sync
                         else f"{Fore.RED}N/A (smart_sync missing in config){Style.RESET_ALL}")
     
-    subtitle_downloads = f"{Fore.YELLOW}{top_downloads}{Style.RESET_ALL}" if top_downloads else f"{Fore.RED}N/A{Style.RESET_ALL}"
+    subtitle_downloads = f"{Fore.YELLOW}{subtitle_batch_size}{Style.RESET_ALL}" if subtitle_batch_size else f"{Fore.RED}N/A{Style.RESET_ALL}"
     
     if delete_extra_videos is not None:
         delete_status = (f"{Fore.RED}PERMANENTLY DELETE extra videos{Style.RESET_ALL}" 
@@ -389,7 +435,7 @@ def print_main_menu():
     print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Start Subservient")
     print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Scan subtitle coverage")
     print(f"  {Fore.GREEN}3{Style.RESET_ALL} = Show quick instructions")
-    print(f"  {Fore.GREEN}4{Style.RESET_ALL} = Install & verify requirements")
+    print(f"  {Fore.GREEN}4{Style.RESET_ALL} = Package manager")
     print(f"  {Fore.GREEN}5{Style.RESET_ALL} = Extra tools")
     print(f"  {Fore.GREEN}6{Style.RESET_ALL} = Recreate .config file")
     print(f"  {Fore.GREEN}7{Style.RESET_ALL} = Open README file")
@@ -429,6 +475,174 @@ def print_extra_tools_menu():
     print(f"  {Fore.RED}3{Style.RESET_ALL} = Return to main menu\n")
     
     print(f"{Style.DIM}More tools will be added in future updates.{Style.RESET_ALL}")
+
+def print_package_manager_menu():
+    """Display package manager menu with install, verify, and update options."""
+    utils.clear_and_print_ascii(BANNER_LINE)
+    print(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Package Manager\n")
+    
+    print(f"{Style.BRIGHT}{Fore.CYAN}Package Management Options:{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Manage Python packages and dependencies:{Style.RESET_ALL}\n")
+    
+    print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Install requirements - Install all required packages from requirements.txt")
+    print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Verify requirements - Check if all packages are correctly installed")
+    print(f"  {Fore.GREEN}3{Style.RESET_ALL} = Update packages - Update all packages to latest versions")
+    print(f"  {Fore.RED}4{Style.RESET_ALL} = Return to main menu\n")
+    
+    print(f"{Style.DIM}Tip: Run 'Update packages' periodically to fix issues like the torchaudio error.{Style.RESET_ALL}")
+
+def show_package_manager():
+    """Handle the Package Manager menu interface."""
+    while True:
+        print_package_manager_menu()
+        choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+        
+        if choice == "1":
+            # Install requirements
+            utils.clear_and_print_ascii(BANNER_LINE)
+            print(f"{Style.BRIGHT}{Fore.BLUE}[Package Manager]{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}Installing Requirements{Style.RESET_ALL}\n")
+            check_external_tools()
+            req_path = Path(__file__).parent / 'requirements.txt'
+            print(f"{Fore.LIGHTYELLOW_EX}Installing requirements from requirements.txt...{Style.RESET_ALL}\n")
+            log_requirements_event("--- REQUIREMENTS INSTALLATION START ---")
+            try:
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', str(req_path)])
+                print(f"\n{Fore.GREEN}Requirements installed successfully!{Style.RESET_ALL}\n")
+                log_requirements_event("requirements.txt install: success")
+            except Exception as e:
+                print(f"\n{Fore.RED}Failed to install requirements: {e}{Style.RESET_ALL}\n")
+                log_requirements_event(f"requirements.txt install: failed: {e}")
+            log_requirements_event("--- REQUIREMENTS INSTALLATION END ---")
+            input("Press Enter to continue...")
+            
+        elif choice == "2":
+            # Verify requirements
+            utils.clear_and_print_ascii(BANNER_LINE)
+            print(f"{Style.BRIGHT}{Fore.BLUE}[Package Manager]{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}Verifying Requirements{Style.RESET_ALL}\n")
+            check_external_tools()
+            check_requirements_status()
+            input("\nPress Enter to continue...")
+            
+        elif choice == "3":
+            # Update packages
+            utils.clear_and_print_ascii(BANNER_LINE)
+            print(f"{Style.BRIGHT}{Fore.BLUE}[Package Manager]{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}Updating Packages{Style.RESET_ALL}\n")
+            print(f"{Fore.YELLOW}This will update all installed Python packages to their latest versions.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}This may take several minutes.{Style.RESET_ALL}\n")
+            print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, update all packages")
+            print(f"  {Fore.RED}2{Style.RESET_ALL} = No, cancel\n")
+            sub_choice = input(f"Make a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+            
+            if sub_choice == "1":
+                utils.clear_and_print_ascii(BANNER_LINE)
+                print(f"{Style.BRIGHT}{Fore.BLUE}[Package Manager]{Style.RESET_ALL} {Fore.LIGHTYELLOW_EX}Updating Packages{Style.RESET_ALL}\n")
+                log_requirements_event("--- PACKAGE UPDATE START ---")
+                
+                # Get list of installed packages
+                try:
+                    result = subprocess.run([sys.executable, '-m', 'pip', 'list', '--outdated', '--format=json'], 
+                                          capture_output=True, text=True, check=True)
+                    import json
+                    outdated = json.loads(result.stdout)
+                    
+                    if not outdated:
+                        print(f"{Fore.GREEN}All packages are already up to date!{Style.RESET_ALL}\n")
+                        log_requirements_event("No packages needed updating")
+                    else:
+                        print(f"{Fore.CYAN}Found {len(outdated)} package(s) to update:{Style.RESET_ALL}")
+                        for pkg in outdated:
+                            print(f"  {pkg['name']}: {pkg['version']} → {pkg['latest_version']}")
+                        print()
+                        
+                        # Update all packages
+                        print(f"{Fore.LIGHTYELLOW_EX}Updating packages...{Style.RESET_ALL}\n")
+                        for pkg in outdated:
+                            try:
+                                print(f"Updating {pkg['name']}...", end=' ')
+                                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', pkg['name']], 
+                                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                print(f"{Fore.GREEN}DONE{Style.RESET_ALL}")
+                                log_requirements_event(f"Updated: {pkg['name']} {pkg['version']} → {pkg['latest_version']}")
+                            except Exception as e:
+                                print(f"{Fore.RED}✗{Style.RESET_ALL}")
+                                log_requirements_event(f"Failed to update {pkg['name']}: {e}")
+                        
+                        print(f"\n{Fore.GREEN}Package update completed!{Style.RESET_ALL}\n")
+                        log_requirements_event("Package update: success")
+                        
+                except Exception as e:
+                    print(f"{Fore.RED}Failed to update packages: {e}{Style.RESET_ALL}\n")
+                    log_requirements_event(f"Package update: failed: {e}")
+                
+                log_requirements_event("--- PACKAGE UPDATE END ---")
+                input("Press Enter to continue...")
+                
+        elif choice == "4":
+            break
+        else:
+            print(f"{Fore.RED}Invalid choice. Please select 1, 2, 3, or 4.{Style.RESET_ALL}")
+            time.sleep(1)
+
+def check_external_tools():
+    """Check if external tools (ffmpeg, mkvmerge, Visual C++) are installed."""
+    print(f"{Fore.LIGHTYELLOW_EX}Checking for external tools...{Style.RESET_ALL}")
+    import shutil
+    ffmpeg_path = shutil.which("ffmpeg")
+    mkvmerge_path = shutil.which("mkvmerge")
+    
+    if ffmpeg_path:
+        try:
+            result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True)
+            print(f"{Fore.GREEN}ffmpeg found!{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error running ffmpeg: {e}{Style.RESET_ALL}")
+    else:
+        print(f"\n{Fore.LIGHTRED_EX}ffmpeg is not installed or not found in your PATH.{Style.RESET_ALL}")
+        print(f"ffmpeg is a crucial tool for Subservient to work properly.")
+    
+    if mkvmerge_path:
+        try:
+            result = subprocess.run([mkvmerge_path, "--version"], capture_output=True, text=True)
+            print(f"{Fore.GREEN}MKVToolNix (mkvmerge) found!{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error running mkvmerge: {e}{Style.RESET_ALL}")
+    else:
+        print(f"\n{Fore.LIGHTRED_EX}MKVToolNix (mkvmerge) is not installed or not found in your PATH.{Style.RESET_ALL}")
+        print(f"MKVToolNix is required for extracting subtitles from MKV files.")
+    
+    if not ffmpeg_path or not mkvmerge_path:
+        print(f"\n{Fore.WHITE}For detailed installation instructions, please see the README file.{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}You can also use option '7' from the main menu to open the README directly.{Style.RESET_ALL}")
+    
+    if os.name == 'nt':
+        import glob
+        cl_path = shutil.which('cl')
+        
+        if cl_path:
+            print(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL}")
+        else:
+            vs_patterns = [
+                r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
+            ]
+            found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
+            
+            if found_cl:
+                print(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL} {Fore.WHITE}(not in PATH){Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.LIGHTRED_EX}Microsoft Visual C++ Build Tools are not installed.{Style.RESET_ALL}")
+                print(f"Some Python packages require these tools to compile properly.")
+                print(f"{Fore.WHITE}In the README, look for chapter: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}In there, check the 'External Tools' section for installation instructions.{Style.RESET_ALL}")
+    print()
 
 def show_extra_tools_menu():
     """Handle the Extra Tools menu interface."""
@@ -607,9 +821,43 @@ def delete_moved_subtitles_folders():
             
             if missing_langs:
                 missing_list = ", ".join(sorted(missing_langs))
-                print(f"  {Fore.RED}[WARNING] Missing in parent folder: {missing_list}{Style.RESET_ALL}")
-                confirm = input(f"  Delete anyway? (y/n): ").strip().lower()
-                if confirm == 'y':
+                print(f"  {Fore.RED}⚠ Missing in parent folder: {missing_list}{Style.RESET_ALL}\n")
+                print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Recover missing subtitle(s) to movie folder  {Fore.LIGHTBLACK_EX}(restores backup, then deletes folder){Style.RESET_ALL}")
+                print(f"  {Fore.RED}2{Style.RESET_ALL} = Delete anyway")
+                print(f"  {Fore.YELLOW}3{Style.RESET_ALL} = Skip\n")
+                action = input(f"  Make a choice: ").strip()
+                if action == "1":
+                    import shutil
+                    # Find video file in parent directory to derive the correct subtitle filename
+                    video_extensions = {'.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv'}
+                    video_files = [f for f in parent_dir.iterdir()
+                                   if f.is_file() and f.suffix.lower() in video_extensions]
+                    video_stem = video_files[0].stem if video_files else None
+
+                    for lang in sorted(missing_langs):
+                        lang_subs = [s for s in moved_subs if f".{lang}." in s.name.lower()]
+                        if not lang_subs:
+                            print(f"  {Fore.RED}✗ No backup subtitle found for {lang.upper()}{Style.RESET_ALL}")
+                            continue
+                        sub_file = lang_subs[0]
+                        # Name as videoname.lang.ext, or keep original name if no video found
+                        dest_name = f"{video_stem}.{lang}{sub_file.suffix}" if video_stem else sub_file.name
+                        dest_path = parent_dir / dest_name
+                        try:
+                            shutil.move(str(sub_file), str(dest_path))
+                            print(f"  {Fore.GREEN}✓ Restored: {dest_name}{Style.RESET_ALL}")
+                        except Exception as e:
+                            print(f"  {Fore.RED}✗ Failed to restore {sub_file.name}: {e}{Style.RESET_ALL}")
+
+                    # Delete the backup folder after restoring
+                    try:
+                        shutil.rmtree(moved_folder)
+                        print(f"  {Fore.GREEN}✓ Backup folder deleted{Style.RESET_ALL}\n")
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"  {Fore.RED}✗ Error deleting folder: {str(e)}{Style.RESET_ALL}\n")
+                        skipped_count += 1
+                elif action == "2":
                     try:
                         import shutil
                         shutil.rmtree(moved_folder)
@@ -692,9 +940,14 @@ def print_instructions_page(page):
         print(f"{Fore.GREEN}*{Style.RESET_ALL} If you have issues, check your .config and requirements first.")
         print(f"{Fore.GREEN}*{Style.RESET_ALL} For advanced options, see the README or .config comments.")
         print(f"{Fore.GREEN}*{Style.RESET_ALL} Still stuck? Open an issue on GitHub or ask ChatGPT for help.\n")
-        print(f"{Fore.LIGHTWHITE_EX}Subservient is free and open source.\nIf you appreciate the project, you can support future development via Buy Me a Coffee:{Style.RESET_ALL}")
+        print(f"{Fore.LIGHTWHITE_EX}Subservient is free and open source; built by one person and maintained in spare time.{Style.RESET_ALL}")
+        print(f"{Fore.LIGHTWHITE_EX}It took months to build what no other tool does: multi-candidate Smart Sync, series support,")
+        print(f"internal subtitle extraction, DRIFT recovery, and a quality scoring system, all in one pipeline.{Style.RESET_ALL}\n")
+        print(f"{Fore.YELLOW}If Subservient has saved you hours of manual subtitle work, consider buying me a coffee:{Style.RESET_ALL}")
         print(f"{Fore.CYAN}https://buymeacoffee.com/nexigen{Style.RESET_ALL}\n")
-        print(f"{Fore.LIGHTWHITE_EX}I can't always offer one-on-one support to everyone, but donors are welcome to join my Discord for extra help.\nDonors can also get my builds/patches earlier (or as soon as I commit them) as an extra 'thank you'.\nMany thanks for understanding, for donating, and heck.. even just for using Subservient.{Style.RESET_ALL}")
+        print(f"{Fore.LIGHTWHITE_EX}Your support directly funds what's coming next: Bazarr integration, a web UI, and Jellyfin/Plex webhooks.")
+        print(f"Donors get early access to new builds and are welcome in my Discord for priority support.{Style.RESET_ALL}\n")
+        print(f"{Fore.LIGHTWHITE_EX}Even a one-time €3 makes a difference. But no pressure.. just using Subservient already means a lot.{Style.RESET_ALL}")
         print(f"{Fore.LIGHTMAGENTA_EX}-Nexigen")
 def show_instructions():
     """Show paginated instructions for using Subservient.
@@ -821,10 +1074,15 @@ pause_seconds= 5
 #   When having a low download limit and many videos to sync, it's strongly recommended to not go higher than 12. As a VIP you can easily go for 20 or more.
 max_search_results= 10
 
-# - TOP_DOWNLOADS: Number of subtitles to download and test per batch.
-#   Keeping TOP_DOWNLOADS low preserves your daily download limit by first testing one batch before downloading another batch.
+# - SUBTITLE_BATCH_SIZE: Number of subtitles to download and test per batch.
+#   Keeping SUBTITLE_BATCH_SIZE low preserves your daily download limit by first testing one batch before downloading another batch.
 #   If you need to sync many videos, take 2 to 4 as a maximum. When you have 1000 downloads a day, you could set this to, say, 5-10, for significantly faster processing.
-top_downloads= 3
+subtitle_batch_size= 3
+
+# - COUNT_REJECTED: If true, a subtitle is sent to manual verification when more than 50% of its batch was rejected.
+#   The idea: too many rejections in a batch lower confidence in the winner, even if it scores well.
+#   Set to false to disable this check entirely - the quality score alone then decides whether to auto-accept.
+count_rejected= false
 
 # - DOWNLOAD_RETRY_503: Number of retry attempts for HTTP 503 Service Unavailable errors during subtitle downloads.
 #   503 errors typically indicate OpenSubtitles servers are temporarily overloaded. Higher values increase chance of success but slow down processing.
@@ -843,6 +1101,11 @@ skip_dirs= new folder,nieuwe map,extra,extra's,extras,featurettes,bonus,bonusmat
 #   Subservient is designed for use with content you legally own or have rights to process.
 #   The inclusion of various format and distribution tags serves technical interoperability purposes only.
 UNWANTED_TERMS= sample,cam,ts,workprint,unrated,uncut,720p,1080p,2160p,480p,4k,uhd,imax,eng,ita,jap,hindi,web,webrip,web-dl,bluray,brrip,bdrip,dvdrip,hdrip,hdtv,remux,x264,x265,h.264,h.265,hevc,avc,hdr,hdr10,hdr10+,dv,dolby.vision,sdr,10bit,8bit,ddp,dd+,dts,aac,ac3,eac3,truehd,atmos,flac,5.1,7.1,2.0,yts,yts.mx,yify,rarbg,fgt,galaxyrg,cm8,evo,sparks,drones,amiable,kingdom,tigole,chd,ddr,hdchina,cinefile,ettv,eztv,aXXo,maven,fitgirl,skidrow,reloaded,codex,cpy,conspir4cy,hoodlum,hive-cm8,extras,final.cut,open.matte,hybrid,version,v2,proper,limited,dubbed,subbed,multi,dual.audio,complete.series,complete.season,Licdom,ac,sub,nl,en,ita,eng,subs,rip,h265,xvid,mp3,mp4,avi,Anime Time,[Anime Time]
+
+# - CONSOLE_WIDTH / CONSOLE_HEIGHT: Terminal window size in columns (chars per line) and rows (visible lines).
+#   Only takes effect when launched via double-click on Windows (not in Windows Terminal).
+console_width= 120
+console_height= 40
 
 # - RUN_COUNTER: used to count how many full runs have been made. Also used to organize logfiles
 #   Don't change if you don't need to, as it may result in overwriting existing logs
@@ -1503,7 +1766,8 @@ def main():
                             continue
                         
                         # Series naming validation check
-                        if config.get('series_mode', False):
+                        series_mode_val = config.get('series_mode', '').strip().lower()
+                        if series_mode_val in ('true', '1', 'yes', 'on'):
                             # Define paths needed for validation
                             local_path = Path(__file__).parent.resolve()
                             config_path = local_path / '.config'
@@ -1577,89 +1841,8 @@ def main():
         elif choice == "3":
             show_instructions()
         elif choice == "4":
-            utils.clear_and_print_ascii(BANNER_LINE)
-            print(f"{Style.BRIGHT}{Fore.BLUE}[Subordinate]{Style.RESET_ALL}{Fore.LIGHTYELLOW_EX} Gathering requirements...{Style.RESET_ALL}")
-            ensure_core_requirements()
-            req_path = Path(__file__).parent / 'requirements.txt'
-            utils.clear_and_print_ascii(BANNER_LINE)
-            print(f"{Fore.LIGHTYELLOW_EX}This option will (re)install and test the required packages.{Style.RESET_ALL}\n")
-            print(f"{Fore.LIGHTYELLOW_EX}Checking for external tools...{Style.RESET_ALL}")
-            import shutil
-            ffmpeg_path = shutil.which("ffmpeg")
-            mkvmerge_path = shutil.which("mkvmerge")
-            
-            if ffmpeg_path:
-                try:
-                    result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True)
-                    print(f"{Fore.GREEN}ffmpeg found!{Style.RESET_ALL}")
-                except Exception as e:
-                    print(f"{Fore.RED}Error running ffmpeg: {e}{Style.RESET_ALL}")
-            else:
-                print(f"\n{Fore.LIGHTRED_EX}ffmpeg is not installed or not found in your PATH.{Style.RESET_ALL}")
-                print(f"ffmpeg is a crucial tool for Subservient to work properly.")
-            
-            if mkvmerge_path:
-                try:
-                    result = subprocess.run([mkvmerge_path, "--version"], capture_output=True, text=True)
-                    print(f"{Fore.GREEN}MKVToolNix (mkvmerge) found!{Style.RESET_ALL}")
-                except Exception as e:
-                    print(f"{Fore.RED}Error running mkvmerge: {e}{Style.RESET_ALL}")
-            else:
-                print(f"\n{Fore.LIGHTRED_EX}MKVToolNix (mkvmerge) is not installed or not found in your PATH.{Style.RESET_ALL}")
-                print(f"MKVToolNix is required for extracting subtitles from MKV files.")
-            
-            if not ffmpeg_path or not mkvmerge_path:
-                print(f"\n{Fore.WHITE}For detailed installation instructions, please see the README file.{Style.RESET_ALL}")
-                print(f"{Fore.WHITE}Look for section: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
-                print(f"{Fore.WHITE}You can also use option '7' from the main menu to open the README directly.{Style.RESET_ALL}")
-            
-            if os.name == 'nt':
-                import glob
-                cl_path = shutil.which('cl')
-                
-                if cl_path:
-                    print(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL}")
-                else:
-                    vs_patterns = [
-                        r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
-                        r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe",
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\2017\*\VC\Tools\MSVC\*\bin\Hostx86\x86\cl.exe"
-                    ]
-                    found_cl = any(glob.glob(pattern) for pattern in vs_patterns)
-                    
-                    if found_cl:
-                        print(f"{Fore.GREEN}Microsoft Visual C++ Build Tools found!{Style.RESET_ALL} {Fore.WHITE}(not in PATH){Style.RESET_ALL}")
-                    else:
-                        print(f"\n{Fore.LIGHTRED_EX}Microsoft Visual C++ Build Tools are not installed.{Style.RESET_ALL}")
-                        print(f"Some Python packages require these tools to compile properly.")
-                        print(f"{Fore.WHITE}In the README, look for chapter: {Fore.CYAN}'1. Installing and Configuring Subservient', step 4{Style.RESET_ALL}")
-                        print(f"{Fore.WHITE}In there, check the 'External Tools' section for installation instructions.{Style.RESET_ALL}")
-            
-            print(f"{Fore.LIGHTYELLOW_EX}\nDo you want to proceed with (re)installing and testing?{Style.RESET_ALL}")
-            print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, install and test everything")
-            print(f"  {Fore.RED}2{Style.RESET_ALL} = No, return to main menu\n")
-            sub_choice = input(f"Make a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
-            if sub_choice != "1":
-                print_full_main_menu()
-                continue
-            utils.clear_and_print_ascii(BANNER_LINE)
-            print(f"{Fore.LIGHTYELLOW_EX}Installing requirements from requirements.txt...{Style.RESET_ALL}\n")
-            log_requirements_event("--- REQUIREMENTS INSTALLATION START ---")
-            try:
-                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', str(req_path)])
-                print(f"{Fore.GREEN}Requirements installed successfully!{Style.RESET_ALL}\n")
-                log_requirements_event("requirements.txt install: success")
-            except Exception as e:
-                print(f"{Fore.RED}Failed to install requirements: {e}{Style.RESET_ALL}\n")
-                log_requirements_event(f"requirements.txt install: failed: {e}")
-            log_requirements_event("--- REQUIREMENTS INSTALLATION END ---")
-            check_requirements_status()
+            show_package_manager()
+            print_full_main_menu()
             continue
         elif choice == "5":
             show_extra_tools_menu()
@@ -1734,7 +1917,7 @@ def run_subtitle_coverage_scan():
             return
         
         coverage_results = utils.scan_subtitle_coverage(videos, languages, series_mode, show_progress=True)
-        utils.display_coverage_results(coverage_results, languages, scan_banner, return_to_menu=True)
+        utils.display_coverage_results(coverage_results, languages, scan_banner, return_to_menu=True, series_mode=series_mode)
         
     except Exception as e:
         utils.clear_and_print_ascii(BANNER_LINE)
@@ -1744,6 +1927,7 @@ def run_subtitle_coverage_scan():
 
 ensure_initial_setup()
 utils = import_utils()
+utils.set_console_size()
 write_anchor_to_pathfile()
 write_subordinate_path_to_pathfile()
 

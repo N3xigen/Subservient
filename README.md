@@ -48,8 +48,8 @@
 
 | Strategy | Approach | Performance |
 |----------|----------|-------------|
-| **🚀 First Match** | Uses first successful sync | Quick processing, good results |
-| **🎯 Smart Sync** | Tests all newly downloaded subtitles, picks the best synced one | Slower but highest quality sync |
+| **🚀 First Match** | Uses first successful sync (requires manual verification) | Quick processing, manual quality check |
+| **🎯 Smart Sync** | Tests all candidates, selects highest correlation score | Slower but automatic best-quality selection |
 
 ### 💡 Built for Real-World Use
 
@@ -62,6 +62,7 @@
 
 ## 📋 Table of Contents
 1. [🔧 Installing and Configuring Subservient](#-installing-and-configuring-subservient)
+   - [OMDb API Setup (Recommended)](#omdb-api-setup-recommended)
 2. [🎯 Using Subservient](#-using-subservient)
 3. [⚙️ How Subservient Works: The Four-Phase Automation Process](#️-how-subservient-works-four-phase-automation)
 4. [🔍 Troubleshooting Common Issues](#-troubleshooting-common-issues)
@@ -244,6 +245,55 @@ It will scan your library and provide you with the following markers per video f
 - ❌ No coverage (no subtitles found)
 
 Use before processing to see what's available, or after to verify results.
+
+</details>
+
+<br>
+
+### OMDb API Setup (Recommended)
+
+**🎯 Why use OMDb?** Dramatically improves subtitle search accuracy by using IMDb IDs instead of text matching.
+
+<details>
+<summary><strong>📝 Getting Your Free OMDb API Key</strong></summary>
+
+OMDb provides a free tier with 1000 requests per day - more than enough for personal use.
+
+**Setup Steps:**
+
+1. **Get Free API Key**
+   - Visit: http://www.omdbapi.com/apikey.aspx
+   - Select "FREE! (1,000 daily limit)"
+   - Enter your email address
+   - Check your email and click the activation link
+
+2. **Add to Subservient Config**
+   - Open `.config` file in Subservient folder
+   - Find: `omdb_api_key=`
+   - Paste your key: `omdb_api_key=YOUR_KEY_HERE`
+   - Save the file
+
+**How It Works:**
+
+```
+Without OMDb:
+Query: "Eternals 2021" → OpenSubtitles text search → Mixed results (may include "Eternally", "Eternal Summer")
+
+With OMDb:
+1. Query: "Eternals 2021" → OMDb lookup → IMDb ID: tt9032400
+2. IMDb ID: tt9032400 → OpenSubtitles search → Exact movie matches only ✓
+```
+
+**Search Priority:**
+1. **Movie Hash** (if video file matches exactly) - Most accurate
+2. **IMDb ID** (if OMDb configured) - Very accurate
+3. **Text Search** (fallback) - Less accurate
+
+**Benefits:**
+- ✅ Eliminates partial title matches ("Eternal" vs "Eternally")
+- ✅ Finds correct movies even with typos in filename
+- ✅ Works across different release versions (BluRay, WEB-DL, etc.)
+- ✅ Reduces DRIFT retries and manual verification
 
 </details>
 
@@ -558,13 +608,13 @@ services:
 | Setting | Description | Default | Options |
 |---------|-------------|---------|---------|
 | **series_mode** | Processing mode selection | `false` | `true` = TV Series (all videos), `false` = Movies (largest per folder) |
-| **smart_sync** | Subtitle selection strategy | `true` | `true` = Test all candidates, pick best; `false` = Use first successful sync |
+| **smart_sync** | Subtitle selection strategy | `true` | `true` = Test all, pick highest score; `false` = First match + manual verification |
 | **languages** | Subtitle languages to download and sync | `en` | Comma-separated codes (e.g. `en,nl,fr,de`) |
 | **audio_track_languages** | Audio track languages to keep in video files | `en,ja` | Language codes or `ALL` to keep all tracks |
 
 > **📺 series_mode**: When `true`, processes ALL videos with SxxExx pattern detection. When `false`, only processes the largest video file per folder (movie mode).
 > 
-> **🎯 smart_sync**: When `true`, tests all subtitle candidates and picks the best quality sync. When `false`, uses first acceptable match (faster but potentially lower quality).
+> **🎯 smart_sync**: When `true`, tests all candidates and selects highest correlation score (best audio-subtitle alignment). When `false`, uses first acceptable match but requires manual verification for all syncs.
 > 
 > **🌐 languages**: Controls which subtitle languages are downloaded from OpenSubtitles. Does not affect preservation of existing subtitles.
 > 
@@ -575,8 +625,8 @@ services:
 - `true`: **TV Series Mode** - Processes ALL videos with SxxExx pattern detection and integrity checking
 
 **Smart Sync Details:**
-- `false`: **First Match** - Uses first subtitle that syncs acceptably (faster)  
-- `true`: **Smart Sync** - Tests ALL candidates, compares results, picks best quality (slower but higher quality)
+- `false`: **First Match** - Uses first successful sync, requires manual verification (faster)  
+- `true`: **Smart Sync** - Tests ALL candidates, selects highest correlation score (best quality)
 
 <br>
 
@@ -688,40 +738,105 @@ services:
 </details>
 
 <details>
-<summary><strong>🎯 Smart Sync Mode</strong> - Advanced subtitle selection for optimal quality</summary>
+<summary><strong>🎯 Smart Sync vs First-Match</strong> - Understanding sync strategies and quality metrics</summary>
 
-### 🚀 How Smart Sync Works
+### 🚀 How Subtitle Synchronization Works
 
-**Smart Sync** (`smart_sync=true`) revolutionizes subtitle selection by testing ALL candidates before choosing the best result:
+Subservient uses **FFSubSync** to align subtitles with video audio. Understanding the sync process helps you choose the right mode:
+
+#### 🔊 **The Sync Process**
+1. **Audio Analysis**: FFSubSync detects speech patterns in your video
+2. **Subtitle Analysis**: Reads subtitle timing from the downloaded file
+3. **Alignment**: Matches speech with subtitle timestamps using FFT correlation
+4. **Quality Metrics**: Returns two values:
+   - **Offset**: How much the subtitle needed shifting (seconds)
+   - **Correlation Score**: Raw match quality (higher = better audio-subtitle alignment)
+
+#### 📊 **Understanding Quality Metrics**
+
+**Offset (Universal Metric)**
+- ✅ **< 0.05s**: Excellent - near-perfect timing
+- 🟡 **0.05-2.5s**: Moderate - requires verification
+- 🔴 **> 2.5s**: High - likely wrong subtitle version
+
+**Correlation Score (Relative Metric)**
+- ✅ **Positive & High**: Good audio-subtitle match
+- ❌ **Negative**: Poor match - wrong subtitle
+- ⚠️ **Not Universal**: Score depends on video length and dialogue amount
+- 📌 **Use Case**: Compare multiple subtitles for the SAME video only
 
 #### 🔄 **Sync Strategies**
 
-| Mode | Strategy | Speed | Quality | Best For |
-|------|----------|-------|---------|----------|
-| **First Match** (`false`) | Use first acceptable sync | ⚡ Fast | 🟡 Good | Quick processing, decent results |
-| **Smart Sync** (`true`) | Test all, pick best | 🐌 Slower | 🟢 Excellent | Maximum quality, worth the wait |
+| Mode | Selection Method | Verification | Speed | Quality | Best For |
+|------|-----------------|--------------|-------|---------|----------|
+| **First Match** | Uses first acceptable sync | ⚠️ **Manual required** | ⚡ Fast | 🟡 Variable | Quick testing |
+| **Smart Sync** | Highest correlation score | Only moderate offsets | 🐌 Slower | 🟢 Excellent | Quality priority |
 
-#### 🎯 **Smart Sync Process**
-1. **Batch Download**: Gets all available subtitle candidates
-2. **Parallel Sync**: Tests synchronization for each candidate  
-3. **Quality Comparison**: Measures offset precision for all results
-4. **Best Selection**: Automatically picks the highest-quality sync
-5. **Results Display**: Shows comparison of all tested candidates
+#### 🚀 **First-Match Mode** (`smart_sync=false`)
 
-#### 📊 **Quality Comparison Example**
+**How It Works:**
+- Syncs subtitles one by one
+- Accepts first subtitle that succeeds
+- **Requires manual verification for ALL syncs** (except < accept_offset_threshold)
+
+**Why Manual Verification?**
+- Offset alone doesn't guarantee quality
+- First match may not be the best match
+- No comparison data available
+
+**Example:**
 ```
-[Synchronisation] [Smart Sync] Smart Sync Results:
-• subtitle1.srt: ✓ 0.025s ← BEST
-• subtitle2.srt: ✓ 0.087s  
-• subtitle3.srt: ✗ 3.2s (rejected)
-• subtitle4.srt: ✗ Failed
+[Sync] ✓ Synchronized (0.850s offset) - requires manual verification
+→ You must verify subtitle-audio alignment manually
 ```
 
-#### ⚙️ **Performance Impact**
-- **Processing Time**: ~2-5x longer per video
-- **API Usage**: Tests more subtitle downloads  
-- **Quality Gain**: Significantly better sync accuracy
-- **Recommendation**: Enable for movies/important content
+#### 🎯 **Smart Sync Mode** (`smart_sync=true`)
+
+**How It Works:**
+1. Downloads all subtitle candidates
+2. Syncs ALL candidates in parallel
+3. **Selects highest correlation score** (best audio-subtitle alignment)
+4. Only moderate offsets need verification
+
+**Why It's Better:**
+- Compares multiple options
+- Selects based on audio correlation (not just offset)
+- Automatic quality selection
+
+**Example:**
+```
+[Smart Sync] Results:
+• sub1.srt: ✓ 0.850s | Score: 245000 ← BEST (highest score)
+• sub2.srt: ✓ 0.120s | Score: 180000 
+• sub3.srt: ✗ -45000 (negative score - rejected)
+```
+
+**⚠️ Batch Size Recommendations:**
+- **Minimum**: 3 subtitle candidates per video
+- **Recommended**: 5+ subtitle candidates per video
+- **Why**: Correlation scores are relative metrics - more candidates provide better comparison data
+- **Impact**: With only 1-2 candidates, Smart Sync loses its advantage over First-Match
+- **Configuration**: Set `top_downloads` in [.config](.config) to control batch size (e.g., `top_downloads= 5`)
+
+#### 💡 **Recommendations**
+
+**Use Smart Sync When:**
+- Quality is priority
+- You have sufficient API downloads
+- Processing time is acceptable
+- Using batch sizes of 3+ candidates
+
+**Use First-Match When:**
+- Quick testing needed
+- Limited API downloads
+- Willing to manually verify all results
+- Only 1-2 subtitle candidates available
+
+**Critical Understanding:**
+- **Offset = Universal quality metric** (works across all videos)
+- **Score = Relative quality** (only compare within same video)
+- **Smart Sync = Score-based** (best audio match)
+- **First-Match = Offset-based + manual verification** (fastest)
 
 </details>
 

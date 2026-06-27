@@ -232,7 +232,7 @@ def ext_tag():
     """Return formatted extraction tag for console output."""
     return f"{Style.BRIGHT}{Fore.BLUE}[Extraction]{Style.RESET_ALL}"
 UNWANTED_EXTENSIONS = [".sub", ".idx", ".sup", ".vob"]
-ALLOWED_CODECS = ["SubRip/SRT", "S_TEXT/UTF8", "SubStationAlpha", "S_TEXT/ASS", "SSA", "ASS"]
+ALLOWED_CODECS = ["SubRip/SRT", "S_TEXT/UTF8", "SubStationAlpha", "S_TEXT/ASS", "SSA", "ASS", "TIMED_TEXT", "TIMED TEXT"]
 def detect_language(sub_path):
     """Detect language of subtitle file using langdetect library."""
     try:
@@ -357,6 +357,9 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     print_movie_header(file_path.stem, movie_idx, total_movies)
     print_and_log(f"{ext_tag()} {Fore.CYAN}Scanning: {shortname(file_path)}{Style.RESET_ALL}")
     und_index = 0
+    original_suffix = file_path.suffix.lower()
+    extracted_track_for_lang = {}   # lang -> {'track_id': str, 'srt_path': Path}
+    forced_track_ids_by_size = {}   # lang -> track_id of the forced track (detected by file size)
     base_name = file_path.stem
     parent_dir = file_path.parent
     base_path = parent_dir / base_name
@@ -482,7 +485,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                             print_and_log(f"{ext_tag()} {Fore.YELLOW}→ FORCED subtitle detected but will be treated as regular subtitle (preserve_forced_subtitles=false){Style.RESET_ALL}")
                     else:
                         print_and_log(f"{ext_tag()} {Fore.GREEN}Internal subtitle track {tid}: {codec}, language {lang_raw}{Style.RESET_ALL}")
-                elif any(x in codec for x in ['VOBSUB', 'VOB', 'SUP']):
+                elif any(x in codec for x in ['VOBSUB', 'VOB', 'SUP', 'PGS', 'HDMV']):
                     if lang in vobsub_per_lang:
                         if forced:
                             print_and_log(f"{ext_tag()} {Fore.MAGENTA}Internal FORCED VobSub track {tid}: {codec}, language {lang_raw}{Style.RESET_ALL}")
@@ -522,7 +525,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 forced = t.get('properties', {}).get('forced_track', False) or \
                          (t.get('properties', {}).get('flag-forced', False)) or \
                          ('forced' in (t.get('properties', {}).get('track_name', '') or '').lower())
-                if any(x in codec for x in ['VOBSUB', 'VOB', 'SUP']):
+                if any(x in codec for x in ['VOBSUB', 'VOB', 'SUP', 'PGS', 'HDMV']):
                     if lang_norm not in all_vobsubs_by_lang:
                         all_vobsubs_by_lang[lang_norm] = []
                     all_vobsubs_by_lang[lang_norm].append({'id': str(tid), 'forced': forced})
@@ -557,99 +560,121 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             print_and_log(f"{ext_tag()} {Fore.RED}Failed to parse mkvmerge JSON output: {e}{Style.RESET_ALL}")
     except Exception as e:
         print_and_log(f"{ext_tag()} {Fore.RED}Error with {shortname(file_path)}: {str(e)}{Style.RESET_ALL}")
-    lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True).stdout.splitlines()
-    subtitle_lines = [line for line in lines if 'subtitles' in line.lower()]
     
-    total_subtitles_to_extract = 0
-    for line in subtitle_lines:
-        if not any(codec in line for codec in ALLOWED_CODECS):
-            continue
-        track_id = line.split(':')[0].split()[-1]
-        suffix = f".und{total_subtitles_to_extract}.srt"
-        out_path = parent_dir / f"{base_name}{suffix}"
-        if not out_path.exists():
-            total_subtitles_to_extract += 1
-    
-    if total_subtitles_to_extract > 0:
-        print_and_log(f"{ext_tag()} {Fore.LIGHTYELLOW_EX}Extracting {total_subtitles_to_extract} internal subtitle track(s)...{Style.RESET_ALL}")
-    
-    current_subtitle = 0
-    for line in subtitle_lines:
-        if all(has_lang.values()):
-            print_and_log(f"{ext_tag()} {Fore.GREEN}Goal reached. Extraction stopped.{Style.RESET_ALL}")
-            break
-        if not any(codec in line for codec in ALLOWED_CODECS):
-            continue
-        track_id = line.split(':')[0].split()[-1]
-        lang_code = 'und'
-        if '(' in line and 'language' in line:
-            lang_code = line.split('language ')[-1].split(')')[0].strip().lower()
-        suffix = f".und{und_index}.srt"
-        out_path = parent_dir / f"{base_name}{suffix}"
-        if not out_path.exists():
-            current_subtitle += 1
-            extract_cmd = ['mkvextract', 'tracks', str(file_path), f"{track_id}:{str(out_path)}"]
-            stdout, stderr = run_extraction_with_progress(extract_cmd, out_path, total_subtitles_to_extract, current_subtitle)
-            print_and_log(f"{ext_tag()} {Fore.GREEN}Extracted: {shortname(out_path)}{Style.RESET_ALL}")
-            extracted_files.append(str(out_path))
-        detected = detect_language(out_path)
-        if detected != 'unknown':
-            print_and_log(f"{ext_tag()} {Fore.GREEN}Detected and recognized language: {detected.upper()}{Style.RESET_ALL}")
-        if detected in WANTED_LANGUAGES and not has_lang[detected]:
-            is_forced_extracted = False
-            track_id_from_line = line.split(':')[0].split()[-1]
-            
-            for forced_sub in forced_text_subtitles:
-                if forced_sub['id'] == track_id_from_line:
-                    is_forced_extracted = True
-                    break
-            
-            if SERIES_MODE:
-                # Check if video filename already contains the episode code
-                if sxxexx_code and sxxexx_code.lower() in base_name.lower():
-                    # Video already has SxxExx in name, use standard naming
-                    if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
-                        new_path = parent_dir / f"{base_name}.{detected}.forced.srt"
-                    else:
-                        new_path = parent_dir / f"{base_name}.{detected}.srt"
-                else:
-                    # Video doesn't have SxxExx, add it before language
-                    if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
-                        new_path = parent_dir / f"{base_name}.{sxxexx_code}.{detected}.forced.srt"
-                    else:
-                        new_path = parent_dir / f"{base_name}.{sxxexx_code}.{detected}.srt"
-            else:
+    # Early exit: Skip extraction completely if all wanted subtitles already exist
+    if all(has_lang.values()):
+        print_and_log(f"{ext_tag()} {Fore.GREEN}All required subtitles already present. Skipping extraction.{Style.RESET_ALL}")
+        # Jump directly to remux section (check if unwanted tracks need removal)
+    else:
+        # Only run mkvmerge -i if we need to extract subtitles
+        lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True).stdout.splitlines()
+        subtitle_lines = [line for line in lines if 'subtitles' in line.lower()]
+        
+        total_subtitles_to_extract = 0
+        for line in subtitle_lines:
+            if not any(codec in line for codec in ALLOWED_CODECS):
+                continue
+            track_id = line.split(':')[0].split()[-1]
+            suffix = f".und{total_subtitles_to_extract}.srt"
+            out_path = parent_dir / f"{base_name}{suffix}"
+            if not out_path.exists():
+                total_subtitles_to_extract += 1
+        
+        if total_subtitles_to_extract > 0:
+            print_and_log(f"{ext_tag()} {Fore.LIGHTYELLOW_EX}Extracting {total_subtitles_to_extract} internal subtitle track(s)...{Style.RESET_ALL}")
+        
+        current_subtitle = 0
+        for line in subtitle_lines:
+            if all(has_lang.values()):
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Goal reached. Extraction stopped.{Style.RESET_ALL}")
+                break
+            if not any(codec in line for codec in ALLOWED_CODECS):
+                continue
+            track_id = line.split(':')[0].split()[-1]
+            lang_code = 'und'
+            if '(' in line and 'language' in line:
+                lang_code = line.split('language ')[-1].split(')')[0].strip().lower()
+            suffix = f".und{und_index}.srt"
+            out_path = parent_dir / f"{base_name}{suffix}"
+            if not out_path.exists():
+                current_subtitle += 1
+                extract_cmd = ['mkvextract', 'tracks', str(file_path), f"{track_id}:{str(out_path)}"]
+                stdout, stderr = run_extraction_with_progress(extract_cmd, out_path, total_subtitles_to_extract, current_subtitle)
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Extracted: {shortname(out_path)}{Style.RESET_ALL}")
+                extracted_files.append(str(out_path))
+            detected = detect_language(out_path)
+            if detected != 'unknown':
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Detected and recognized language: {detected.upper()}{Style.RESET_ALL}")
+            if detected in WANTED_LANGUAGES and not has_lang[detected]:
+                is_forced_extracted = False
+                track_id_from_line = line.split(':')[0].split()[-1]
+                
+                for forced_sub in forced_text_subtitles:
+                    if forced_sub['id'] == track_id_from_line:
+                        is_forced_extracted = True
+                        break
+                
                 if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
-                    new_path = parent_dir / f"{base_name}.{detected}.forced.srt"
+                    # Forced subtitle: always keep internal, never create external .forced.srt
+                    try:
+                        out_path.unlink()
+                        deleted_files.append(str(out_path))
+                    except Exception:
+                        pass
+                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Forced subtitle track {track_id_from_line} ({detected.upper()}) kept internal — no external SRT created{Style.RESET_ALL}")
+                    subprocess.run(['mkvpropedit', str(file_path), '--edit', f'track:@{int(track_id_from_line) + 1}', '--set', f'name={detected.upper()} (Forced)'], capture_output=True)
+                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Renamed internal track {track_id_from_line} to '{detected.upper()} (Forced)'{Style.RESET_ALL}")
+                    # Don't set has_lang = True: acquisition still searches for a full non-forced subtitle
+                    continue
+                if SERIES_MODE:
+                    # Check if video filename already contains the episode code
+                    if sxxexx_code and sxxexx_code.lower() in base_name.lower():
+                        new_path = parent_dir / f"{base_name}.{detected}.srt"
+                    else:
+                        # Video doesn't have SxxExx, add it before language
+                        new_path = parent_dir / f"{base_name}.{sxxexx_code}.{detected}.srt"
                 else:
                     lang_part = detected if detected != 'unknown' else 'UNKNOWN'
                     new_path = parent_dir / f"{base_name}.{lang_part}.srt"
-            
-            try:
-                out_path.rename(new_path)
-            except FileExistsError:
-                print_and_log(f"{ext_tag()} {Fore.RED}ERROR: Cannot rename subtitle file - target already exists!{Style.RESET_ALL}")
-                print_and_log(f"{ext_tag()} {Fore.RED}Source: {out_path.name}{Style.RESET_ALL}")
-                print_and_log(f"{ext_tag()} {Fore.RED}Target: {new_path.name}{Style.RESET_ALL}")
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}This usually happens when Subservient was interrupted previously and left incomplete files.{Style.RESET_ALL}")
-                print_and_log(f"{ext_tag()} {Fore.CYAN}SOLUTION: Please remove all .srt files that are not fully synchronized/complete and try again.{Style.RESET_ALL}")
-                print_and_log(f"{ext_tag()} {Fore.CYAN}Look for files like: *.und0.srt, *.temp.srt, or duplicate .forced.srt files{Style.RESET_ALL}")
-                print(f"\n{Fore.RED}Press Enter to exit...{Style.RESET_ALL}")
-                input()
-                sys.exit(1)
-            except PermissionError as e:
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}Permission error for subtitle renaming - attempting automatic fix...{Style.RESET_ALL}")
-                fixed_items = fix_permissions_proactively(out_path)
-                if fixed_items:
-                    print_and_log(f"{ext_tag()} {Fore.CYAN}Fixed permissions for: {', '.join(fixed_items)}{Style.RESET_ALL}")
-                    try:
-                        out_path.rename(new_path)
-                        print_and_log(f"{ext_tag()} {Fore.GREEN}Permission fix successful! Subtitle renamed.{Style.RESET_ALL}")
-                    except Exception as retry_error:
-                        print_and_log(f"{ext_tag()} {Fore.RED}PERMISSION ERROR: Cannot rename subtitle file even after permission fix!{Style.RESET_ALL}")
+                
+                try:
+                    out_path.rename(new_path)
+                except FileExistsError:
+                    print_and_log(f"{ext_tag()} {Fore.RED}ERROR: Cannot rename subtitle file - target already exists!{Style.RESET_ALL}")
+                    print_and_log(f"{ext_tag()} {Fore.RED}Source: {out_path.name}{Style.RESET_ALL}")
+                    print_and_log(f"{ext_tag()} {Fore.RED}Target: {new_path.name}{Style.RESET_ALL}")
+                    print_and_log(f"{ext_tag()} {Fore.YELLOW}This usually happens when Subservient was interrupted previously and left incomplete files.{Style.RESET_ALL}")
+                    print_and_log(f"{ext_tag()} {Fore.CYAN}SOLUTION: Please remove all .srt files that are not fully synchronized/complete and try again.{Style.RESET_ALL}")
+                    print_and_log(f"{ext_tag()} {Fore.CYAN}Look for files like: *.und0.srt, *.temp.srt, or duplicate .forced.srt files{Style.RESET_ALL}")
+                    print(f"\n{Fore.RED}Press Enter to exit...{Style.RESET_ALL}")
+                    input()
+                    sys.exit(1)
+                except PermissionError as e:
+                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Permission error for subtitle renaming - attempting automatic fix...{Style.RESET_ALL}")
+                    fixed_items = fix_permissions_proactively(out_path)
+                    if fixed_items:
+                        print_and_log(f"{ext_tag()} {Fore.CYAN}Fixed permissions for: {', '.join(fixed_items)}{Style.RESET_ALL}")
+                        try:
+                            out_path.rename(new_path)
+                            print_and_log(f"{ext_tag()} {Fore.GREEN}Permission fix successful! Subtitle renamed.{Style.RESET_ALL}")
+                        except Exception as retry_error:
+                            print_and_log(f"{ext_tag()} {Fore.RED}PERMISSION ERROR: Cannot rename subtitle file even after permission fix!{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.RED}Source: {out_path.name}{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.RED}Target: {new_path.name}{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.RED}Error details: {str(retry_error)}{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.YELLOW}POSSIBLE SOLUTIONS:{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.CYAN}1. Right-click the Subservient folder → Properties → Uncheck 'Read-only' if checked{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.CYAN}2. Move the entire Subservient folder to a different location (Desktop, Documents, etc.){Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.CYAN}3. Make sure no other application is accessing the subtitle files{Style.RESET_ALL}")
+                            print_and_log(f"{ext_tag()} {Fore.CYAN}4. Try running Subservient as Administrator{Style.RESET_ALL}")
+                            print(f"\n{Fore.RED}Press Enter to exit...{Style.RESET_ALL}")
+                            input()
+                            sys.exit(1)
+                    else:
+                        print_and_log(f"{ext_tag()} {Fore.RED}PERMISSION ERROR: Cannot rename subtitle file!{Style.RESET_ALL}")
                         print_and_log(f"{ext_tag()} {Fore.RED}Source: {out_path.name}{Style.RESET_ALL}")
                         print_and_log(f"{ext_tag()} {Fore.RED}Target: {new_path.name}{Style.RESET_ALL}")
-                        print_and_log(f"{ext_tag()} {Fore.RED}Error details: {str(retry_error)}{Style.RESET_ALL}")
+                        print_and_log(f"{ext_tag()} {Fore.RED}Error details: {str(e)}{Style.RESET_ALL}")
                         print_and_log(f"{ext_tag()} {Fore.YELLOW}POSSIBLE SOLUTIONS:{Style.RESET_ALL}")
                         print_and_log(f"{ext_tag()} {Fore.CYAN}1. Right-click the Subservient folder → Properties → Uncheck 'Read-only' if checked{Style.RESET_ALL}")
                         print_and_log(f"{ext_tag()} {Fore.CYAN}2. Move the entire Subservient folder to a different location (Desktop, Documents, etc.){Style.RESET_ALL}")
@@ -658,56 +683,85 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                         print(f"\n{Fore.RED}Press Enter to exit...{Style.RESET_ALL}")
                         input()
                         sys.exit(1)
-                else:
-                    print_and_log(f"{ext_tag()} {Fore.RED}PERMISSION ERROR: Cannot rename subtitle file!{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.RED}Source: {out_path.name}{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.RED}Target: {new_path.name}{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.RED}Error details: {str(e)}{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.YELLOW}POSSIBLE SOLUTIONS:{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.CYAN}1. Right-click the Subservient folder → Properties → Uncheck 'Read-only' if checked{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.CYAN}2. Move the entire Subservient folder to a different location (Desktop, Documents, etc.){Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.CYAN}3. Make sure no other application is accessing the subtitle files{Style.RESET_ALL}")
-                    print_and_log(f"{ext_tag()} {Fore.CYAN}4. Try running Subservient as Administrator{Style.RESET_ALL}")
-                    print(f"\n{Fore.RED}Press Enter to exit...{Style.RESET_ALL}")
-                    input()
-                    sys.exit(1)
-            if is_forced_extracted:
-                if PRESERVE_FORCED_SUBTITLES:
-                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Recognized as FORCED language: {detected.upper()} - preserved with .forced. naming{Style.RESET_ALL}")
-                else:
+                if is_forced_extracted:
                     print_and_log(f"{ext_tag()} {Fore.YELLOW}Recognized as FORCED language: {detected.upper()} - treated as regular subtitle (preserve_forced_subtitles=false){Style.RESET_ALL}")
+                else:
+                    print_and_log(f"{ext_tag()} {Fore.GREEN}Recognized as language: {detected.upper()}{Style.RESET_ALL}")
+                has_lang[detected] = True
+                extracted_files.append(str(new_path))
+                extracted_track_for_lang[detected] = {'track_id': track_id_from_line, 'srt_path': new_path}
+            elif detected in WANTED_LANGUAGES:
+                # Duplicate language — try size-based forced/non-forced detection
+                existing_info = extracted_track_for_lang.get(detected)
+                size_handled = False
+                if existing_info and existing_info['srt_path'].exists() and out_path.exists():
+                    size_existing = existing_info['srt_path'].stat().st_size
+                    size_new = out_path.stat().st_size
+                    if size_existing > 0 and size_new > 0:
+                        min_size = min(size_existing, size_new)
+                        max_size = max(size_existing, size_new)
+                        confident = min_size / max_size < 0.40
+                        if size_new <= size_existing:
+                            # New is smaller — treat as forced candidate
+                            forced_track_id = track_id_from_line
+                            try:
+                                out_path.unlink()
+                                deleted_files.append(str(out_path))
+                            except Exception:
+                                pass
+                        else:
+                            # Existing is smaller — treat as forced candidate, new is non-forced
+                            forced_track_id = existing_info['track_id']
+                            nf_path = existing_info['srt_path']
+                            try:
+                                existing_info['srt_path'].unlink()
+                                out_path.rename(nf_path)
+                                extracted_track_for_lang[detected] = {'track_id': track_id_from_line, 'srt_path': nf_path}
+                            except Exception as e:
+                                print_and_log(f"{ext_tag()} {Fore.YELLOW}Size-based swap failed for {detected.upper()}: {e} — falling back to single-track mode{Style.RESET_ALL}")
+                                forced_track_id = None
+                        if forced_track_id is not None:
+                            forced_track_ids_by_size[detected] = forced_track_id
+                            label = "FORCED" if confident else "likely forced (best guess by size)"
+                            if PRESERVE_FORCED_SUBTITLES:
+                                print_and_log(f"{ext_tag()} {Fore.MAGENTA}Size-based detection: track {forced_track_id} is {label} ({detected.upper()}) — will be kept internal, non-forced extracted externally{Style.RESET_ALL}")
+                                subprocess.run(['mkvpropedit', str(file_path), '--edit', f'track:@{int(forced_track_id) + 1}', '--set', f'name={detected.upper()} (Forced)'], capture_output=True)
+                                print_and_log(f"{ext_tag()} {Fore.MAGENTA}Renamed internal track {forced_track_id} to '{detected.upper()} (Forced)'{Style.RESET_ALL}")
+                            else:
+                                print_and_log(f"{ext_tag()} {Fore.YELLOW}Size-based detection: track {forced_track_id} is {label} ({detected.upper()}) — will be removed (preserve_forced_subtitles=false){Style.RESET_ALL}")
+                            size_handled = True
+                if not size_handled:
+                    # Sizes identical or unavailable — discard duplicate
+                    try:
+                        out_path.unlink()
+                        deleted_files.append(str(out_path))
+                    except PermissionError:
+                        print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove duplicate extracted subtitle {out_path.name} (permission denied){Style.RESET_ALL}")
+                    except Exception as e:
+                        print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove duplicate extracted subtitle {out_path.name}: {str(e)}{Style.RESET_ALL}")
+            elif detected == 'unknown':
+                if not SERIES_MODE:
+                    new_path = parent_dir / f"{base_name}.UNKNOWN.srt"
+                    try:
+                        out_path.rename(new_path)
+                        print_and_log(f"{ext_tag()} {Fore.YELLOW}Language not recognized, renamed to: {shortname(new_path)}{Style.RESET_ALL}")
+                        extracted_files.append(str(new_path))
+                    except PermissionError:
+                        print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not rename unknown subtitle {out_path.name} (permission denied){Style.RESET_ALL}")
+                    except Exception as e:
+                        print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not rename unknown subtitle {out_path.name}: {str(e)}{Style.RESET_ALL}")
             else:
-                print_and_log(f"{ext_tag()} {Fore.GREEN}Recognized as language: {detected.upper()}{Style.RESET_ALL}")
-            has_lang[detected] = True
-            extracted_files.append(str(new_path))
-        elif detected in WANTED_LANGUAGES:
-            try:
-                out_path.unlink()
-                deleted_files.append(str(out_path))
-            except PermissionError:
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove duplicate extracted subtitle {out_path.name} (permission denied){Style.RESET_ALL}")
-            except Exception as e:
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove duplicate extracted subtitle {out_path.name}: {str(e)}{Style.RESET_ALL}")
-        elif detected == 'unknown':
-            if not SERIES_MODE:
-                new_path = parent_dir / f"{base_name}.UNKNOWN.srt"
                 try:
-                    out_path.rename(new_path)
-                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Language not recognized, renamed to: {shortname(new_path)}{Style.RESET_ALL}")
-                    extracted_files.append(str(new_path))
+                    out_path.unlink()
+                    deleted_files.append(str(out_path))
                 except PermissionError:
-                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not rename unknown subtitle {out_path.name} (permission denied){Style.RESET_ALL}")
+                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove unwanted extracted subtitle {out_path.name} (permission denied){Style.RESET_ALL}")
                 except Exception as e:
-                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not rename unknown subtitle {out_path.name}: {str(e)}{Style.RESET_ALL}")
-        else:
-            try:
-                out_path.unlink()
-                deleted_files.append(str(out_path))
-            except PermissionError:
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove unwanted extracted subtitle {out_path.name} (permission denied){Style.RESET_ALL}")
-            except Exception as e:
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove unwanted extracted subtitle {out_path.name}: {str(e)}{Style.RESET_ALL}")
-        und_index += 1
+                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove unwanted extracted subtitle {out_path.name}: {str(e)}{Style.RESET_ALL}")
+            und_index += 1
+    
+    # Continue with remux section (this runs regardless of whether extraction was skipped)
+    did_remux = False
     info_cmd_json = ['mkvmerge', '-J', str(file_path)]
     result_json = subprocess.run(info_cmd_json, capture_output=True, text=True)
     audio_tracks = []
@@ -792,7 +846,62 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         if is_multi_lang_release:
             log(f"[DEBUG] Multi-language release detected in filename: {file_path.name}")
             log(f"[DEBUG] Primary track protection will be DISABLED for unwanted languages")
-    
+
+        # When all audio tracks are 'und', try to infer their languages from the filename.
+        # Scene releases often encode audio languages in dot-separated order before 'sub':
+        #   e.g. "Movie.ita.eng.sub.ita.Group.avi"  →  track 1 = ita, track 2 = eng
+        all_und = mkv_audio_track_langs and all(lang == 'und' for lang in mkv_audio_track_langs.values())
+        if all_und:
+            _FILENAME_LANG_TOKENS = {
+                'ita': 'ita', 'it': 'ita',
+                'eng': 'eng', 'en': 'eng',
+                'fra': 'fra', 'fre': 'fra', 'fr': 'fra',
+                'ger': 'deu', 'deu': 'deu', 'de': 'deu',
+                'spa': 'spa', 'es': 'spa',
+                'dut': 'nld', 'nld': 'nld', 'nl': 'nld',
+                'por': 'por', 'pt': 'por',
+                'jpn': 'jpn', 'jap': 'jpn', 'ja': 'jpn',
+                'kor': 'kor', 'ko': 'kor',
+                'chi': 'zho', 'chn': 'zho', 'zho': 'zho', 'zh': 'zho',
+                'rus': 'rus', 'ru': 'rus',
+                'pol': 'pol', 'pl': 'pol',
+                'tur': 'tur', 'tr': 'tur',
+                'swe': 'swe', 'sv': 'swe',
+                'nor': 'nor', 'nb': 'nor',
+                'dan': 'dan', 'da': 'dan',
+                'fin': 'fin', 'fi': 'fin',
+                'hun': 'hun', 'hu': 'hun',
+                'cze': 'ces', 'ces': 'ces', 'cs': 'ces',
+                'rum': 'ron', 'ron': 'ron', 'ro': 'ron',
+                'hrv': 'hrv', 'cro': 'hrv', 'hr': 'hrv',
+                'srp': 'srp', 'ser': 'srp', 'sr': 'srp',
+                'bul': 'bul', 'bg': 'bul',
+                'ukr': 'ukr', 'uk': 'ukr',
+                'heb': 'heb', 'he': 'heb',
+                'ara': 'ara', 'ar': 'ara',
+                'hin': 'hin', 'hi': 'hin',
+                'tha': 'tha', 'th': 'tha',
+                'vie': 'vie', 'vi': 'vie',
+                'gre': 'ell', 'ell': 'ell', 'el': 'ell',
+            }
+            _SUB_MARKERS = {'sub', 'subs', 'dub', 'dubbed'}
+            stem_parts = file_path.stem.lower().split('.')
+            audio_parts = []
+            for _p in stem_parts:
+                if _p in _SUB_MARKERS:
+                    break
+                audio_parts.append(_p)
+            inferred_langs = [_FILENAME_LANG_TOKENS[_p] for _p in audio_parts if _p in _FILENAME_LANG_TOKENS]
+            track_ids_sorted = sorted(mkv_audio_track_langs.keys(), key=int)
+            if inferred_langs and len(inferred_langs) == len(track_ids_sorted):
+                log(f"[DEBUG] All audio tracks untagged — inferring languages from filename: {inferred_langs}")
+                print_and_log(f"{ext_tag()} {Fore.CYAN}All audio tracks untagged — inferring languages from filename: {', '.join(inferred_langs)}{Style.RESET_ALL}")
+                for _tid, _lang in zip(track_ids_sorted, inferred_langs):
+                    mkv_audio_track_langs[_tid] = _lang
+                mkv_audio_langs_3 = set(mkv_audio_track_langs.values())
+            else:
+                log(f"[DEBUG] Cannot infer audio languages from filename: {len(inferred_langs)} token(s) found vs {len(track_ids_sorted)} track(s)")
+
         for track_id, lang_code_3 in mkv_audio_track_langs.items():
             log(f"[DEBUG] Comparing MKV track id={track_id} lang='{lang_code_3}' to config set {config_audio_langs_3}")
             if lang_code_3 == 'und':
@@ -817,6 +926,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             mkv_info = json.loads(result_json.stdout)
             vobsub_backup_tracks = set()
             vobsub_per_lang = {lang: [] for lang in WANTED_LANGUAGES}
+            lang_fallback_info = {}  # lang -> {'track_id': str, 'is_forced': bool}
             srt_found_per_lang = {lang: (parent_dir / f"{base_name}.{lang}.srt").exists() or 
                                          (parent_dir / f"{base_name}.{lang}.forced.srt").exists() 
                                   for lang in WANTED_LANGUAGES}
@@ -826,7 +936,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 lang_code = track.get('properties', {}).get('language', 'und').lower()
                 lang = map_lang_3to2(lang_code)
                 codec = track.get('codec', '').lower()
-                if track_type == 'subtitles' and lang in WANTED_LANGUAGES and ('vobsub' in codec or 'sub/vobsub' in codec or 'sup' in codec or 'vob' in codec):
+                if track_type == 'subtitles' and lang in WANTED_LANGUAGES and ('vobsub' in codec or 'sub/vobsub' in codec or 'sup' in codec or 'vob' in codec or 'pgs' in codec or 'hdmv' in codec):
                     vobsub_per_lang[lang].append(track_id)
             for lang in WANTED_LANGUAGES:
                 if not srt_found_per_lang[lang] and vobsub_per_lang[lang]:
@@ -843,7 +953,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                     is_forced_to_preserve = (PRESERVE_FORCED_SUBTITLES and track_id in forced_subtitle_track_ids)
                     
                     if lang in WANTED_LANGUAGES:
-                        if 'vobsub' in codec or 'sub/vobsub' in codec or 'sup' in codec or 'vob' in codec:
+                        if 'vobsub' in codec or 'sub/vobsub' in codec or 'sup' in codec or 'vob' in codec or 'pgs' in codec or 'hdmv' in codec:
                             if srt_exists and not is_forced_to_preserve:
                                 unwanted_subtitle_tracks.append(track_id)
                             else:
@@ -854,6 +964,97 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                             if is_forced_to_preserve:
                                 subtitle_tracks.append(track_id)
                                 print_and_log(f"{ext_tag()} {Fore.MAGENTA}Preserving FORCED text subtitle track {track_id} (lang: {lang}){Style.RESET_ALL}")
+                            elif not srt_exists:
+                                track_is_forced = (
+                                    track.get('properties', {}).get('forced_track', False) or
+                                    track.get('properties', {}).get('flag-forced', False) or
+                                    ('forced' in (track.get('properties', {}).get('track_name', '') or '').lower())
+                                )
+                                if lang not in lang_fallback_info:
+                                    subtitle_tracks.append(track_id)
+                                    lang_fallback_info[lang] = {'track_id': track_id, 'is_forced': track_is_forced}
+                                    print_and_log(f"{ext_tag()} {Fore.GREEN}Keeping internal text subtitle track {track_id} (lang: {lang.upper()}, forced={track_is_forced}) — no external SRT present{Style.RESET_ALL}")
+                                else:
+                                    existing = lang_fallback_info[lang]
+                                    if existing['is_forced'] and not track_is_forced:
+                                        # Swap: replace forced with non-forced (prefer full subtitle)
+                                        subtitle_tracks.remove(existing['track_id'])
+                                        unwanted_subtitle_tracks.append(existing['track_id'])
+                                        subtitle_tracks.append(track_id)
+                                        lang_fallback_info[lang] = {'track_id': track_id, 'is_forced': False}
+                                        print_and_log(f"{ext_tag()} {Fore.GREEN}Replacing forced track {existing['track_id']} with non-forced track {track_id} (lang: {lang.upper()}) — preferring full subtitle{Style.RESET_ALL}")
+                                    elif not existing['is_forced'] and track_is_forced:
+                                        # Already have a non-forced track, drop the forced duplicate
+                                        unwanted_subtitle_tracks.append(track_id)
+                                        print_and_log(f"{ext_tag()} {Fore.YELLOW}Removing forced duplicate text subtitle track {track_id} (lang: {lang.upper()}) — non-forced track already kept{Style.RESET_ALL}")
+                                    else:
+                                        # Both same forced status — try size-based detection
+                                        # Extract both temporarily and compare file sizes
+                                        tmp_a = existing['track_id']
+                                        tmp_b = track_id
+                                        out_a = extracted_track_for_lang.get(lang, {}).get('srt_path')
+                                        # out_a is already extracted (if MKV extraction pass ran); for non-MKV it won't exist yet
+                                        if out_a and out_a.exists():
+                                            # Extract the new (second) track temporarily
+                                            tmp_out = parent_dir / f"{base_name}.sizecheck_tmp.srt"
+                                            try:
+                                                tmp_extract_cmd = ['mkvextract', 'tracks', str(file_path), f"{tmp_b}:{str(tmp_out)}"]
+                                                subprocess.run(tmp_extract_cmd, capture_output=True)
+                                            except Exception:
+                                                pass
+                                            size_handled_remux = False
+                                            if tmp_out.exists():
+                                                size_a = out_a.stat().st_size
+                                                size_b = tmp_out.stat().st_size
+                                                try:
+                                                    tmp_out.unlink()
+                                                except Exception:
+                                                    pass
+                                                if size_a > 0 and size_b > 0:
+                                                    min_s = min(size_a, size_b)
+                                                    max_s = max(size_a, size_b)
+                                                    if min_s / max_s < 0.40:
+                                                        # Can determine forced
+                                                        if size_b <= size_a:
+                                                            # track_b (current) is forced
+                                                            forced_tid = tmp_b
+                                                            nonforcced_tid = tmp_a
+                                                        else:
+                                                            # track_a (existing) is forced
+                                                            forced_tid = tmp_a
+                                                            nonforcced_tid = tmp_b
+                                                        forced_track_ids_by_size[lang] = forced_tid
+                                                        if PRESERVE_FORCED_SUBTITLES:
+                                                            # Keep forced internal, exclude non-forced (srt_exists covers it)
+                                                            subtitle_tracks.append(forced_tid)
+                                                            # Remove non-forced if it was added
+                                                            if nonforcced_tid in subtitle_tracks:
+                                                                subtitle_tracks.remove(nonforcced_tid)
+                                                            unwanted_subtitle_tracks.append(nonforcced_tid)
+                                                            print_and_log(f"{ext_tag()} {Fore.MAGENTA}Size-based detection: track {forced_tid} is FORCED ({lang.upper()}) — kept internal, track {nonforcced_tid} removed (external SRT is non-forced){Style.RESET_ALL}")
+                                                        else:
+                                                            # Both removed; forced doesn't need to stay
+                                                            unwanted_subtitle_tracks.append(forced_tid)
+                                                            if nonforcced_tid in subtitle_tracks:
+                                                                subtitle_tracks.remove(nonforcced_tid)
+                                                            unwanted_subtitle_tracks.append(nonforcced_tid)
+                                                            print_and_log(f"{ext_tag()} {Fore.YELLOW}Size-based detection: track {forced_tid} identified as FORCED ({lang.upper()}) — both internal tracks removed, external SRT (non-forced) retained{Style.RESET_ALL}")
+                                                        size_handled_remux = True
+                                            if not size_handled_remux:
+                                                subtitle_tracks.append(track_id)
+                                                print_and_log(f"{ext_tag()} {Fore.CYAN}Keeping additional text subtitle track {track_id} (lang: {lang.upper()}) — cannot determine which is forced{Style.RESET_ALL}")
+                                        else:
+                                            # No extracted SRT available for comparison (non-MKV pre-remux)
+                                            subtitle_tracks.append(track_id)
+                                            print_and_log(f"{ext_tag()} {Fore.CYAN}Keeping additional text subtitle track {track_id} (lang: {lang.upper()}) — cannot determine which is forced{Style.RESET_ALL}")
+                            else:
+                                # srt_exists=True: track is normally excluded from remux output
+                                # Exception: if size-detection identified this as the forced track and we want to preserve it
+                                if (PRESERVE_FORCED_SUBTITLES
+                                        and lang in forced_track_ids_by_size
+                                        and track_id == forced_track_ids_by_size[lang]):
+                                    subtitle_tracks.append(track_id)
+                                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Size-detected FORCED track {track_id} (lang: {lang.upper()}) kept internal — external SRT is non-forced{Style.RESET_ALL}")
                     else:
                         if track_id in forced_subtitle_track_ids:
                             if PRESERVE_FORCED_SUBTITLES and (PRESERVE_UNWANTED_SUBTITLES or lang in WANTED_LANGUAGES):
@@ -872,6 +1073,12 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                             if PRESERVE_UNWANTED_SUBTITLES:
                                 subtitle_tracks.append(track_id)
                                 print_and_log(f"{ext_tag()} {Fore.CYAN}Preserving unwanted subtitle track {track_id} (lang: {lang}) - preserve_unwanted_subtitles=true{Style.RESET_ALL}")
+                            elif lang == 'und' and original_suffix != '.mkv' and any(c.lower() in codec or codec in c.lower() for c in ALLOWED_CODECS):
+                                # Undefined language text track in non-MKV: keep it through remux so the
+                                # post-remux pass can extract it and run language detection. It may turn
+                                # out to be English or Dutch.
+                                subtitle_tracks.append(track_id)
+                                print_and_log(f"{ext_tag()} {Fore.CYAN}Keeping undefined-language text subtitle track {track_id} in non-MKV file — will extract and detect language after remux{Style.RESET_ALL}")
                             else:
                                 unwanted_subtitle_tracks.append(track_id)
             for tid in vobsub_backup_tracks:
@@ -907,8 +1114,16 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     subtitle_tracks = [tid for tid in subtitle_tracks if tid not in unwanted_subtitle_tracks]
     log(f"[DEBUG] Subtitle tracks kept (final): {subtitle_tracks}")
     log(f"[DEBUG] Subtitle tracks removed: {unwanted_subtitle_tracks}")
-    if unwanted_audio_tracks or unwanted_subtitle_tracks:
+    # Non-MKV files (MP4/AVI) with subtitle tracks need remux to MKV even if no tracks are
+    # unwanted — mkvmerge auto-converts TIMED_TEXT → SubRip/SRT during remux, after which
+    # the post-remux extraction pass can extract them with mkvextract.
+    needs_conversion_remux = (original_suffix != '.mkv' and not all(has_lang.values()) and bool(subtitle_tracks))
+    if needs_conversion_remux and not unwanted_audio_tracks and not unwanted_subtitle_tracks:
+        print_and_log(f"{ext_tag()} {Fore.CYAN}Non-MKV file with internal subtitle tracks — remuxing to MKV for subtitle conversion...{Style.RESET_ALL}")
+    if unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux:
         temp_path = parent_dir / (base_name + ".temp.mkv")
+        # mkvmerge always outputs MKV; for non-mkv inputs the final file gets .mkv extension
+        final_path = file_path if file_path.suffix.lower() == '.mkv' else file_path.with_suffix('.mkv')
         
         fixed_items = fix_permissions_proactively(file_path)
         if fixed_items:
@@ -927,6 +1142,8 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         log(f"[DEBUG] mkvmerge command: {' '.join(mkvmerge_cmd)}")
         log(f"[DEBUG] Audio tracks kept: {audio_tracks}")
         log(f"[DEBUG] Subtitle tracks kept: {subtitle_tracks}")
+        if original_suffix != '.mkv':
+            print_and_log(f"{ext_tag()} {Fore.LIGHTYELLOW_EX}{file_path.suffix.upper().lstrip('.')} detected — converting to MKV to enable subtitle extraction.{Style.RESET_ALL}")
         print_and_log(f"{Fore.LIGHTYELLOW_EX}{ext_tag()} Remuxing to remove unwanted audio/subtitle tracks...{Style.RESET_ALL}")
         orig_size = file_path.stat().st_size
         percent = [0]
@@ -957,7 +1174,9 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         if temp_path.exists():
             try:
                 file_path.unlink()
-                temp_path.rename(file_path)
+                temp_path.rename(final_path)
+                file_path = final_path
+                did_remux = True
                 print_and_log(f"{ext_tag()} {Fore.GREEN}Remuxed to remove unwanted internal subtitles and audio tracks: {file_path.name}{Style.RESET_ALL}")
             except PermissionError as e:
                 print_and_log(f"{ext_tag()} {Fore.YELLOW}Permission error detected - attempting automatic fix...{Style.RESET_ALL}")
@@ -966,7 +1185,9 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                     print_and_log(f"{ext_tag()} {Fore.CYAN}Fixed permissions for: {', '.join(fixed_items)}{Style.RESET_ALL}")
                     try:
                         file_path.unlink()
-                        temp_path.rename(file_path)
+                        temp_path.rename(final_path)
+                        file_path = final_path
+                        did_remux = True
                         print_and_log(f"{ext_tag()} {Fore.GREEN}Permission fix successful! Remuxed to remove unwanted internal subtitles and audio tracks: {file_path.name}{Style.RESET_ALL}")
                     except Exception as retry_error:
                         print_and_log(f"{ext_tag()} {Fore.RED}PERMISSION ERROR: Cannot complete remux operation even after permission fix!{Style.RESET_ALL}")
@@ -1022,6 +1243,248 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             print_and_log(f"{ext_tag()} {Fore.RED}Remux failed, temp.mkv not found.{Style.RESET_ALL}")
     else:
         print_and_log(f"{Fore.WHITE}{ext_tag()} No unwanted internal subtitles or audio tracks — {Fore.GREEN}remux skipped{Style.RESET_ALL}")
+
+    # Post-remux extraction pass: non-MKV files (MP4/AVI) could not be extracted by mkvextract
+    # on the first pass. After remux to MKV, TIMED_TEXT tracks are auto-converted to SubRip/SRT
+    # by mkvmerge and are now extractable.
+    post_remux_tracks_to_strip = []  # track IDs that turned out unwanted after language detection
+    unwanted_track_for_lang = {}  # lang -> {'track_id': str, 'srt_path': Path} for first-occurrence unwanted tracks (temp, for size comparison)
+    if did_remux and not all(has_lang.values()) and original_suffix != '.mkv':
+        print_and_log(f"{ext_tag()} {Fore.CYAN}Post-remux: scanning converted MKV for newly extractable subtitle tracks...{Style.RESET_ALL}")
+        pr_lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True).stdout.splitlines()
+        pr_subtitle_lines = [line for line in pr_lines if 'subtitles' in line.lower()]
+
+        pr_total = sum(
+            1 for line in pr_subtitle_lines
+            if any(codec in line for codec in ALLOWED_CODECS)
+        )
+        if pr_total > 0:
+            print_and_log(f"{ext_tag()} {Fore.LIGHTYELLOW_EX}Extracting {pr_total} subtitle track(s) from converted MKV...{Style.RESET_ALL}")
+
+        pr_current = 0
+        goal_logged = False
+        for line in pr_subtitle_lines:
+            if all(has_lang.values()) and not goal_logged:
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Goal reached — continuing to check remaining tracks for duplicate/forced detection.{Style.RESET_ALL}")
+                goal_logged = True
+            if not any(codec in line for codec in ALLOWED_CODECS):
+                continue
+            track_id = line.split(':')[0].split()[-1]
+            suffix = f".und{und_index}.srt"
+            out_path = parent_dir / f"{base_name}{suffix}"
+            if not out_path.exists():
+                pr_current += 1
+                extract_cmd = ['mkvextract', 'tracks', str(file_path), f"{track_id}:{str(out_path)}"]
+                run_extraction_with_progress(extract_cmd, out_path, pr_total, pr_current)
+                if out_path.exists():
+                    print_and_log(f"{ext_tag()} {Fore.GREEN}Extracted: {shortname(out_path)}{Style.RESET_ALL}")
+                else:
+                    und_index += 1
+                    continue
+            detected = detect_language(out_path)
+            if detected != 'unknown':
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Detected and recognized language: {detected.upper()}{Style.RESET_ALL}")
+            if detected in WANTED_LANGUAGES and not has_lang[detected]:
+                is_forced_extracted = any(fs['id'] == track_id for fs in forced_text_subtitles)
+                if is_forced_extracted and PRESERVE_FORCED_SUBTITLES:
+                    # Forced subtitle: always keep internal, never create external .forced.srt
+                    try:
+                        out_path.unlink()
+                        deleted_files.append(str(out_path))
+                    except Exception:
+                        pass
+                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Forced subtitle track {track_id} ({detected.upper()}) kept internal — no external SRT created{Style.RESET_ALL}")
+                    subprocess.run(['mkvpropedit', str(file_path), '--edit', f'track:@{int(track_id) + 1}', '--set', f'name={detected.upper()} (Forced)'], capture_output=True)
+                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Renamed internal track {track_id} to '{detected.upper()} (Forced)'{Style.RESET_ALL}")
+                    # Don't set has_lang = True
+                    und_index += 1
+                    continue
+                if SERIES_MODE:
+                    if sxxexx_code and sxxexx_code.lower() in base_name.lower():
+                        new_path = parent_dir / f"{base_name}.{detected}.srt"
+                    else:
+                        new_path = parent_dir / f"{base_name}.{sxxexx_code}.{detected}.srt"
+                else:
+                    new_path = parent_dir / f"{base_name}.{detected}.srt"
+                try:
+                    out_path.rename(new_path)
+                except Exception as e:
+                    print_and_log(f"{ext_tag()} {Fore.RED}Could not rename post-remux subtitle {out_path.name} → {new_path.name}: {e}{Style.RESET_ALL}")
+                    post_remux_tracks_to_strip.append(track_id)
+                    und_index += 1
+                    continue
+                if is_forced_extracted:
+                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Recognized as FORCED language: {detected.upper()} - treated as regular subtitle (preserve_forced_subtitles=false){Style.RESET_ALL}")
+                else:
+                    print_and_log(f"{ext_tag()} {Fore.GREEN}Recognized as language: {detected.upper()}{Style.RESET_ALL}")
+                # External SRT created — strip the internal track
+                post_remux_tracks_to_strip.append(track_id)
+                has_lang[detected] = True
+                extracted_files.append(str(new_path))
+                extracted_track_for_lang[detected] = {'track_id': track_id, 'srt_path': new_path}
+            elif detected in WANTED_LANGUAGES:
+                # Duplicate language — try size-based forced/non-forced detection
+                existing_info = extracted_track_for_lang.get(detected)
+                size_handled = False
+                if existing_info and existing_info['srt_path'].exists() and out_path.exists():
+                    size_existing = existing_info['srt_path'].stat().st_size
+                    size_new = out_path.stat().st_size
+                    if size_existing > 0 and size_new > 0:
+                        min_size = min(size_existing, size_new)
+                        max_size = max(size_existing, size_new)
+                        confident = min_size / max_size < 0.40
+                        if size_new <= size_existing:
+                            # New (out_path) is smaller — treat as forced candidate
+                            forced_track_id = track_id
+                            try:
+                                out_path.unlink()
+                                deleted_files.append(str(out_path))
+                            except Exception:
+                                pass
+                        else:
+                            # Existing is smaller — treat as forced candidate, new is non-forced
+                            forced_track_id = existing_info['track_id']
+                            nf_path = existing_info['srt_path']
+                            try:
+                                existing_info['srt_path'].unlink()
+                                out_path.rename(nf_path)
+                                extracted_track_for_lang[detected] = {'track_id': track_id, 'srt_path': nf_path}
+                            except Exception as e:
+                                print_and_log(f"{ext_tag()} {Fore.YELLOW}Size-based swap failed for {detected.upper()}: {e}{Style.RESET_ALL}")
+                                forced_track_id = None
+                        if forced_track_id is not None:
+                            forced_track_ids_by_size[detected] = forced_track_id
+                            label = "FORCED" if confident else "likely forced (best guess by size)"
+                            if PRESERVE_FORCED_SUBTITLES:
+                                if forced_track_id in post_remux_tracks_to_strip:
+                                    post_remux_tracks_to_strip.remove(forced_track_id)
+                                print_and_log(f"{ext_tag()} {Fore.MAGENTA}Size-based detection: track {forced_track_id} is {label} ({detected.upper()}) — kept internal, non-forced extracted externally{Style.RESET_ALL}")
+                                subprocess.run(['mkvpropedit', str(file_path), '--edit', f'track:@{int(forced_track_id) + 1}', '--set', f'name={detected.upper()} (Forced)'], capture_output=True)
+                                print_and_log(f"{ext_tag()} {Fore.MAGENTA}Renamed internal track {forced_track_id} to '{detected.upper()} (Forced)'{Style.RESET_ALL}")
+                            else:
+                                if forced_track_id not in post_remux_tracks_to_strip:
+                                    post_remux_tracks_to_strip.append(forced_track_id)
+                                print_and_log(f"{ext_tag()} {Fore.YELLOW}Size-based detection: track {forced_track_id} is {label} ({detected.upper()}) — will be removed (preserve_forced_subtitles=false){Style.RESET_ALL}")
+                            size_handled = True
+                if not size_handled:
+                    # Sizes identical or unavailable — keep internal track, discard duplicate external SRT
+                    try:
+                        out_path.unlink()
+                        deleted_files.append(str(out_path))
+                    except Exception:
+                        pass
+                    print_and_log(f"{ext_tag()} {Fore.CYAN}Internal track {track_id} ({detected.upper()}) kept — external duplicate SRT discarded (sizes identical){Style.RESET_ALL}")
+            else:
+                # Unwanted or undetectable language
+                if PRESERVE_UNWANTED_SUBTITLES and detected != 'unknown':
+                    prev_unwanted = unwanted_track_for_lang.get(detected)
+                    if prev_unwanted is not None:
+                        # Duplicate unwanted language — size-based forced/non-forced detection
+                        size_handled = False
+                        if prev_unwanted['srt_path'].exists() and out_path.exists():
+                            size_prev = prev_unwanted['srt_path'].stat().st_size
+                            size_new = out_path.stat().st_size
+                            if size_prev > 0 and size_new > 0:
+                                min_size = min(size_prev, size_new)
+                                max_size = max(size_prev, size_new)
+                                confident = min_size / max_size < 0.40
+                                forced_track_id = track_id if size_new <= size_prev else prev_unwanted['track_id']
+                                label = "FORCED" if confident else "likely forced (best guess by size)"
+                                for p in [out_path, prev_unwanted['srt_path']]:
+                                    try:
+                                        if p.exists():
+                                            p.unlink()
+                                            deleted_files.append(str(p))
+                                    except Exception:
+                                        pass
+                                if PRESERVE_FORCED_SUBTITLES:
+                                    if forced_track_id in post_remux_tracks_to_strip:
+                                        post_remux_tracks_to_strip.remove(forced_track_id)
+                                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Size-based detection: track {forced_track_id} is {label} ({detected.upper()}) — kept internal (preserve_unwanted + preserve_forced=true){Style.RESET_ALL}")
+                                    subprocess.run(['mkvpropedit', str(file_path), '--edit', f'track:@{int(forced_track_id) + 1}', '--set', f'name={detected.upper()} (Forced)'], capture_output=True)
+                                    print_and_log(f"{ext_tag()} {Fore.MAGENTA}Renamed internal track {forced_track_id} to '{detected.upper()} (Forced)'{Style.RESET_ALL}")
+                                else:
+                                    if forced_track_id not in post_remux_tracks_to_strip:
+                                        post_remux_tracks_to_strip.append(forced_track_id)
+                                    print_and_log(f"{ext_tag()} {Fore.YELLOW}Size-based detection: track {forced_track_id} is {label} ({detected.upper()}) — forced removed (preserve_forced_subtitles=false){Style.RESET_ALL}")
+                                size_handled = True
+                        if not size_handled:
+                            for p in [out_path, prev_unwanted['srt_path']]:
+                                try:
+                                    if p.exists():
+                                        p.unlink()
+                                        deleted_files.append(str(p))
+                                except Exception:
+                                    pass
+                            print_and_log(f"{ext_tag()} {Fore.CYAN}Duplicate unwanted {detected.upper()} tracks — both kept internal (sizes unavailable){Style.RESET_ALL}")
+                    else:
+                        # First occurrence — keep SRT temporarily for potential duplicate size comparison
+                        unwanted_track_for_lang[detected] = {'track_id': track_id, 'srt_path': out_path}
+                        print_and_log(f"{ext_tag()} {Fore.CYAN}Keeping internal track {track_id} ({detected.upper()}) — preserve_unwanted_subtitles=true{Style.RESET_ALL}")
+                elif PRESERVE_UNWANTED_SUBTITLES:
+                    # Unknown language — keep internal, delete temp SRT
+                    try:
+                        out_path.unlink()
+                        deleted_files.append(str(out_path))
+                    except Exception:
+                        pass
+                    print_and_log(f"{ext_tag()} {Fore.CYAN}Keeping internal track {track_id} (unknown) — preserve_unwanted_subtitles=true{Style.RESET_ALL}")
+                else:
+                    # preserve_unwanted=false — strip internal track from MKV
+                    post_remux_tracks_to_strip.append(track_id)
+                    try:
+                        out_path.unlink()
+                        deleted_files.append(str(out_path))
+                    except Exception:
+                        pass
+            und_index += 1
+
+        # Clean up any first-occurrence unwanted SRTs that had no duplicate to compare with
+        for lang, info in unwanted_track_for_lang.items():
+            try:
+                if info['srt_path'].exists():
+                    info['srt_path'].unlink()
+                    deleted_files.append(str(info['srt_path']))
+            except Exception:
+                pass
+
+    # Cleanup remux: strip any internal tracks that turned out to be unwanted after detection
+    if post_remux_tracks_to_strip:
+        print_and_log(f"{ext_tag()} {Fore.LIGHTYELLOW_EX}Cleanup remux: removing {len(post_remux_tracks_to_strip)} unwanted internal subtitle track(s) from MKV...{Style.RESET_ALL}")
+        try:
+            pr_info = json.loads(subprocess.run(['mkvmerge', '-J', str(file_path)], capture_output=True, text=True).stdout)
+            all_track_ids = [str(t.get('id')) for t in pr_info.get('tracks', [])]
+            keep_tracks = [tid for tid in all_track_ids if tid not in post_remux_tracks_to_strip]
+            sub_keep = [tid for tid in keep_tracks if any(
+                t.get('type') == 'subtitles' and str(t.get('id')) == tid
+                for t in pr_info.get('tracks', [])
+            )]
+            audio_keep = [tid for tid in keep_tracks if any(
+                t.get('type') == 'audio' and str(t.get('id')) == tid
+                for t in pr_info.get('tracks', [])
+            )]
+            cleanup_temp = parent_dir / (base_name + ".temp.mkv")
+            cleanup_cmd = ['mkvmerge', '-o', str(cleanup_temp)]
+            if audio_keep:
+                cleanup_cmd += ['--audio-tracks', ','.join(audio_keep)]
+            else:
+                cleanup_cmd += ['--no-audio']
+            if sub_keep:
+                cleanup_cmd += ['--subtitle-tracks', ','.join(sub_keep)]
+            else:
+                cleanup_cmd += ['--no-subtitles']
+            cleanup_cmd += [str(file_path)]
+            orig_size = file_path.stat().st_size
+            run_remux_with_progress(cleanup_cmd, cleanup_temp, orig_size)
+            if cleanup_temp.exists():
+                file_path.unlink()
+                cleanup_temp.rename(file_path)
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Cleanup remux complete: unwanted tracks removed from MKV{Style.RESET_ALL}")
+            else:
+                print_and_log(f"{ext_tag()} {Fore.RED}Cleanup remux failed: temp file not found{Style.RESET_ALL}")
+        except Exception as e:
+            print_and_log(f"{ext_tag()} {Fore.RED}Cleanup remux error: {e}{Style.RESET_ALL}")
+
     if not all(has_lang.values()):
         status = f"{file_path.name}: "
     for lang in WANTED_LANGUAGES:
@@ -1160,7 +1623,7 @@ def to_iso639_2(code):
     return code
 def get_video_files_for_folder(folder: Path) -> list:
     """Get all video files in folder while respecting skip_dirs configuration."""
-    video_files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in ['.mkv', '.mp4']]
+    video_files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in ['.mkv', '.mp4', '.avi']]
     if SERIES_MODE:
         return sorted(video_files)
     if not video_files:
