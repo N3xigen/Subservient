@@ -38,7 +38,7 @@ import time
 from colorama import Fore, Style
 import datetime
 from platformdirs import user_config_dir
-from utils import ASCII_ART, clear_and_print_ascii, get_skip_dirs_from_config, has_strict_series_naming_pattern, extract_sxxexx_code, make_drift_metadata_key, load_drift_subtitle_metadata
+from utils import ASCII_ART, clear_and_print_ascii, get_skip_dirs_from_config, has_strict_series_naming_pattern, extract_sxxexx_code, make_drift_metadata_key, load_drift_subtitle_metadata, detect_language_from_filename
 from opensubtitles_hash import calculate_hash
 SNAPSHOT_DIR = Path(__file__).parent.resolve()
 DRIFT_METADATA_FILE = str(SNAPSHOT_DIR / '.drifted_and_failed_subtitles.txt')
@@ -826,8 +826,22 @@ def check_existing_subtitles(mkv_path: Path) -> dict:
 
 def extract_sxxexx_code(name: str) -> str | None:
     """Extract season/episode code from filename."""
-    match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
+    # Episode allows up to 3 digits (e.g. "S06E001") so it isn't truncated to just the first 2 digits
+    match = re.search(r"[sS](\d{1,2})[eE](\d{1,3})", name)
     return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
+
+def _find_episode_number_loosely(name: str) -> int | None:
+    """Try common episode-number notations other than 'SxxExx' and 'episode N'
+    (e.g. '1x01', 'Ep.01', 'Ep 1', 'Aflevering 1'). Returns the episode number, or None."""
+    for pattern in (
+        r'\d{1,2}x(\d{1,2})',           # 1x01
+        r'ep\.?\s*(\d{1,2})\b',         # Ep.01 / Ep 1 / Ep01
+        r'aflevering\s*(\d{1,2})',      # Dutch: Aflevering 1
+    ):
+        match = re.search(pattern, name, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
 
 unknown_sxxexx_files = []
 quota_exceeded = False
@@ -1156,12 +1170,16 @@ def count_existing_subtitles(movie_path: Path, lang: str) -> tuple[set, int]:
 def build_search_query(raw_title: str) -> str:
     # For series mode, truncate everything after SxxExx pattern
     if SERIES_MODE:
-        series_match = re.search(r'([sS](\d{1,2})[eE](\d{1,2}))', raw_title)
+        series_match = re.search(r'([sS](\d{1,2})[eE](\d{1,3}))', raw_title)
         if series_match:
             # Find the end of the SxxExx pattern
             series_end_pos = series_match.end()
             # Keep everything up to and including SxxExx, remove everything after
             truncated_title = raw_title[:series_end_pos]
+            # Normalize a 3-digit episode (e.g. S06E006) down to 2 digits (S06E06) for search
+            season_num, episode_num = series_match.group(2), series_match.group(3)
+            normalized_code = f"S{int(season_num):02d}E{int(episode_num):02d}"
+            truncated_title = truncated_title[:series_match.start()] + normalized_code
             
             # Simple cleaning for series: only remove brackets and their contents
             # Example: [TorrentCouch.com].13.Reasons.Why.S02E04 -> .13.Reasons.Why.S02E04
@@ -2294,7 +2312,7 @@ def handle_missing_queries():
                     ]
                     for f in all_sub_files:
                         m = re.match(r"(P?\d+)." + re.escape(search_lang) + r".number\d+", f.name)
-                        if m:
+                        if m and not m.group(1).startswith('P'):
                             drift_failed_counts.add(int(m.group(1)))
                     filtered_results = []
                     for sub in results:
@@ -2792,6 +2810,21 @@ def print_video_header(video_name, idx, total):
     bar = f"{Fore.CYAN}[{idx}/{total}]{Style.RESET_ALL}  {Fore.LIGHTYELLOW_EX}{video_name.upper()}{Style.RESET_ALL}"
     print(bar.ljust(79), end='\n', flush=True)
 
+def _get_next_p_number(video_folder: Path, lang: str, episode_sxxexx: str) -> int:
+    """Find the next free P-number for a (language, episode) combination, so extracted
+    subtitles are written directly in the P{n*100}.{lang}.number{n}.{SxxExx}.srt sync format."""
+    existing = (
+        list(video_folder.glob(f"P*.{lang.lower()}.number*.{episode_sxxexx}.srt")) +
+        list(video_folder.glob(f"P*.{lang.lower()}.number*.{episode_sxxexx}.DRIFT.srt")) +
+        list(video_folder.glob(f"P*.{lang.lower()}.number*.{episode_sxxexx}.FAILED.srt"))
+    )
+    indices = []
+    for f in existing:
+        m = re.search(r'\.number(\d+)\.', f.name)
+        if m:
+            indices.append(int(m.group(1)))
+    return max(indices, default=0) + 1
+
 def extract_subtitles_from_predownloaded_folders(video_folder: Path, video_files: list):
     """
     Extract subtitles from SUBTITLES.S##.LANG folders/zips for episodes that need them.
@@ -2806,43 +2839,65 @@ def extract_subtitles_from_predownloaded_folders(video_folder: Path, video_files
     subtitle_folders = []
     for item in video_folder.iterdir():
         item_name_lower = item.name.lower()
-        if item_name_lower.startswith('subtitles.s') and ('.' in item_name_lower):
-            # Extract language from folder name
-            if item.is_dir():
-                lang = item.name.split('.')[-1].upper()
-            elif item.name.lower().endswith('.zip'):
-                lang = item.name.split('.')[-2].upper()  # SUBTITLES.S01.EN.zip -> EN
-            else:
-                continue
-            
-            # Check if this language is in our configured languages
-            if lang.upper() in [l.upper() for l in LANGUAGES]:
+        if not re.match(r'subtitles\.s\d{1,2}(\.|$)', item_name_lower):
+            continue
+        if item.is_dir():
+            archive_ext = None
+        elif item_name_lower.endswith(('.zip', '.rar')):
+            archive_ext = item_name_lower[-4:]
+        else:
+            continue
+
+        stem_lower = item_name_lower[:-4] if archive_ext else item_name_lower
+        parts = stem_lower.split('.')
+        if len(parts) >= 3:
+            # SUBTITLES.Sxx.LANG -> only this configured language
+            lang = parts[-1].upper()
+            if lang in [l.upper() for l in LANGUAGES]:
                 subtitle_folders.append((item, lang))
+        elif len(parts) == 2:
+            # SUBTITLES.Sxx with no language -> search all configured languages
+            subtitle_folders.append((item, None))
     
     if not subtitle_folders:
         return
     
     total_extracted = 0
     for subtitle_item, lang in subtitle_folders:
-        print_and_log(f"{acq_tag()} {Fore.YELLOW}Processing {subtitle_item.name} for language {lang}...{Style.RESET_ALL}")
+        lang_label = lang.upper() if lang else f"ALL configured ({', '.join(LANGUAGES)})"
+        print_and_log(f"{acq_tag()} {Fore.YELLOW}Processing {subtitle_item.name} for language {lang_label}...{Style.RESET_ALL}")
         
-        # Create temporary extraction directory if dealing with ZIP
+        # Create temporary extraction directory if dealing with a ZIP or RAR archive
         temp_extract_dir = None
-        if subtitle_item.name.lower().endswith('.zip'):
+        if subtitle_item.name.lower().endswith(('.zip', '.rar')):
             temp_extract_dir = video_folder / f"temp_extract_{subtitle_item.stem}"
             temp_extract_dir.mkdir(exist_ok=True)
-            
-            # Extract ZIP to temp directory
-            with zipfile.ZipFile(subtitle_item, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract_dir)
-            
+
+            if subtitle_item.name.lower().endswith('.zip'):
+                with zipfile.ZipFile(subtitle_item, 'r') as zip_ref:
+                    zip_ref.extractall(temp_extract_dir)
+            else:
+                try:
+                    import rarfile
+                except ImportError:
+                    print_and_log(f"{acq_tag()} {Fore.RED}ERROR: The 'rarfile' package is required to extract '{subtitle_item.name}'. Install it with 'pip install rarfile' (and make sure 'unrar' or '7z' is on PATH).{Style.RESET_ALL}")
+                    shutil.rmtree(temp_extract_dir, ignore_errors=True)
+                    continue
+                try:
+                    with rarfile.RarFile(subtitle_item, 'r') as rar_ref:
+                        rar_ref.extractall(temp_extract_dir)
+                except Exception as e:
+                    print_and_log(f"{acq_tag()} {Fore.RED}ERROR: Could not extract '{subtitle_item.name}': {e}. Make sure 'unrar' or '7z' is installed and on PATH.{Style.RESET_ALL}")
+                    shutil.rmtree(temp_extract_dir, ignore_errors=True)
+                    continue
+
             source_dir = temp_extract_dir
         else:
             source_dir = subtitle_item
         
-        # Extract season number from the subtitle folder name (e.g. SUBTITLES.S02.EN -> S02)
-        _season_match = re.search(r'subtitles\.(s\d{2})', subtitle_item.name, re.IGNORECASE)
-        folder_season = _season_match.group(1).upper() if _season_match else 'S01'
+        # Extract season number from the subtitle folder name (e.g. SUBTITLES.S02.EN -> S02, SUBTITLES.S2 -> S02)
+        _season_match = re.search(r'subtitles\.(s\d{1,2})(\.|$)', subtitle_item.name, re.IGNORECASE)
+        folder_season = _normalize_season_code(_season_match.group(1)) if _season_match else 'S01'
 
         try:
             # Collect episode folders, handling optional "Season X" / "Seizoen X" subfolder
@@ -2850,12 +2905,14 @@ def extract_subtitles_from_predownloaded_folders(video_folder: Path, video_files
             for _item in source_dir.iterdir():
                 if not _item.is_dir():
                     continue
-                if re.search(r'episode\s*\d+', _item.name, re.IGNORECASE):
+                # Recognize both "Episode N" folders and folders that carry an explicit
+                # SxxExx code in their name (e.g. "Show.Name.S02E01.1080p...-RARBG[eztv.re]")
+                if re.search(r'episode\s*\d+', _item.name, re.IGNORECASE) or extract_sxxexx_code(_item.name):
                     episode_dirs.append(_item)
                 elif re.search(r'(season|seizoen)\s*\d+', _item.name, re.IGNORECASE):
                     # Drill one level deeper into Season X subfolder
                     for _sub in _item.iterdir():
-                        if _sub.is_dir() and re.search(r'episode\s*\d+', _sub.name, re.IGNORECASE):
+                        if _sub.is_dir() and (re.search(r'episode\s*\d+', _sub.name, re.IGNORECASE) or extract_sxxexx_code(_sub.name)):
                             episode_dirs.append(_sub)
 
             if not episode_dirs:
@@ -2863,13 +2920,29 @@ def extract_subtitles_from_predownloaded_folders(video_folder: Path, video_files
 
             # Process each episode folder inside the subtitle folder
             for episode_folder in episode_dirs:
-                # Try to extract episode number from folder name (episode 1, episode 01, etc.)
-                episode_match = re.search(r'episode\s*(\d{1,2})', episode_folder.name, re.IGNORECASE)
-                if not episode_match:
-                    continue
-                
-                episode_num = int(episode_match.group(1))
-                episode_sxxexx = f"{folder_season}E{episode_num:02d}"
+                # Prefer an explicit SxxExx code in the folder name (e.g. "Show.S02E01...")
+                # over the "episode N" naming convention. If neither is found on the episode
+                # folder itself, also check its parent folder (e.g. a "Season 1" wrapper) and
+                # a handful of other popular episode-number notations before giving up.
+                folder_sxxexx = extract_sxxexx_code(episode_folder.name) or extract_sxxexx_code(episode_folder.parent.name)
+                episode_match = re.search(r'episode\s*(\d{1,2})', episode_folder.name, re.IGNORECASE) or \
+                    re.search(r'episode\s*(\d{1,2})', episode_folder.parent.name, re.IGNORECASE)
+                if folder_sxxexx:
+                    episode_sxxexx = folder_sxxexx
+                elif episode_match:
+                    episode_num = int(episode_match.group(1))
+                    episode_sxxexx = f"{folder_season}E{episode_num:02d}"
+                else:
+                    loose_num = _find_episode_number_loosely(episode_folder.name) or _find_episode_number_loosely(episode_folder.parent.name)
+                    if loose_num:
+                        episode_sxxexx = f"{folder_season}E{loose_num:02d}"
+                    else:
+                        # No SxxExx (or anything resembling it) could be determined at all.
+                        # We cannot safely auto-rename these subtitles without knowing the
+                        # episode they belong to, so stop here and let the user fix it manually.
+                        print_and_log(f"{acq_tag()} {Fore.RED}ERROR: Could not determine the season/episode for '{episode_folder.name}' in {subtitle_item.name}.{Style.RESET_ALL}")
+                        print_and_log(f"{acq_tag()} {Fore.RED}Rename this folder to include a SxxExx code (e.g. 'S{folder_season[1:]}E01') so its episode can be identified, then run acquisition.py again.{Style.RESET_ALL}")
+                        exit_with_prompt(f"{Fore.RED}Press any key to exit...{Style.RESET_ALL}")
                 
                 # Find corresponding video file
                 matching_video = None
@@ -2882,102 +2955,186 @@ def extract_subtitles_from_predownloaded_folders(video_folder: Path, video_files
                 if not matching_video:
                     print_and_log(f"{acq_tag()} {Fore.YELLOW}No matching video found for {episode_folder.name} ({episode_sxxexx}){Style.RESET_ALL}")
                     continue
-                
-                # Check if synchronized subtitle already exists
-                synced_subtitle_path = video_folder / f"{matching_video.stem}.{lang.lower()}.srt"
-                if synced_subtitle_path.exists():
-                    print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - synchronized subtitle already exists{Style.RESET_ALL}")
-                    continue
-                
-                # Extended extraction prevention check
-                # Check if we already extracted subtitles from this episode folder previously
-                sxxexx_from_episode = episode_sxxexx  # S01E01 format
-                season_code = sxxexx_from_episode[:3]  # S01
-                episode_code = sxxexx_from_episode[3:]  # E01
-                
-                # Look for existing P-numbered files that match this season, episode, and language
-                p_numbered_pattern = f"P*.{lang.lower()}.number*.{sxxexx_from_episode}.srt"
-                existing_p_files = list(video_folder.glob(p_numbered_pattern))
-                
-                # Also look for any P-numbered files from this episode (any language) as indicator
-                any_p_numbered_pattern = f"P*.*.number*.{sxxexx_from_episode}.srt"
-                any_existing_p_files = list(video_folder.glob(any_p_numbered_pattern))
-                
-                if existing_p_files:
-                    print_and_log(f"{acq_tag()} [DEBUG] Found {len(existing_p_files)} P-files for {lang.upper()} {sxxexx_from_episode}, checking prevention...")
-                    
-                    # Verify that the P-files came from this exact SUBTITLES folder and episode
-                    skip_extraction = False
-                    
-                    # Check if season code (S01) matches the current SUBTITLES folder
-                    season_match = season_code in subtitle_item.name
-                    print_and_log(f"{acq_tag()} [DEBUG] Season match: {season_code} in {subtitle_item.name} = {season_match}")
-                    
-                    if season_match:
-                        # Extract episode number from folder name like "episode 1" -> "1"
-                        # Then convert to E01 format for comparison
-                        folder_episode_match = re.search(r'episode\s+(\d+)', episode_folder.name.lower())
-                        if folder_episode_match:
-                            folder_episode_num = folder_episode_match.group(1).zfill(2)  # "1" -> "01"
-                            folder_episode_code = f"E{folder_episode_num}"  # "E01"
-                            episode_match = episode_code == folder_episode_code
-                            print_and_log(f"{acq_tag()} [DEBUG] Episode match: {episode_code} == {folder_episode_code} = {episode_match}")
-                            
-                            if episode_match:
-                                skip_extraction = True
-                        else:
-                            print_and_log(f"{acq_tag()} [DEBUG] No episode pattern found in '{episode_folder.name}'")
-                    
-                    if skip_extraction:
-                        print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - P-numbered subtitles already extracted from this episode folder{Style.RESET_ALL}")
+
+                if lang is not None:
+                    # --- Single configured language (SUBTITLES.Sxx.LANG) - original behaviour ---
+
+                    # Check if synchronized subtitle already exists
+                    synced_subtitle_path = video_folder / f"{matching_video.stem}.{lang.lower()}.srt"
+                    if synced_subtitle_path.exists():
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - synchronized subtitle already exists{Style.RESET_ALL}")
                         continue
-                elif any_existing_p_files:
-                    print_and_log(f"{acq_tag()} [DEBUG] Found {len(any_existing_p_files)} P-files from {sxxexx_from_episode} (other languages), checking if from same episode folder...")
                     
-                    # Check if any P-file from this episode came from the same SUBTITLES folder and episode folder
-                    season_match = season_code in subtitle_item.name
-                    if season_match:
-                        folder_episode_match = re.search(r'episode\s+(\d+)', episode_folder.name.lower())
-                        if folder_episode_match:
-                            folder_episode_num = folder_episode_match.group(1).zfill(2)
-                            folder_episode_code = f"E{folder_episode_num}"
-                            episode_match = episode_code == folder_episode_code
-                            
-                            if episode_match:
-                                print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - episode already processed (P-files from other languages exist){Style.RESET_ALL}")
-                                continue
-                
-                # Check if extracted subtitles already exist for this episode
-                # Include both active P-files and DRIFT-marked P-files
-                active_pattern = f"*.{lang.lower()}.number*.{episode_sxxexx}.srt"
-                drift_pattern = f"*.{lang.lower()}.number*.{episode_sxxexx}.DRIFT.srt"
-                
-                existing_extracted = list(video_folder.glob(active_pattern))
-                existing_drift = list(video_folder.glob(drift_pattern))
-                total_existing = existing_extracted + existing_drift
-                
-                print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Checking active pattern: {active_pattern}")
-                print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Found {len(existing_extracted)} active extracted files")
-                print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Checking drift pattern: {drift_pattern}")
-                print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Found {len(existing_drift)} drift extracted files")
-                print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Total existing: {len(total_existing)} files")
-                
-                if total_existing:
-                    print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - extracted subtitles already exist ({len(total_existing)} files: {len(existing_extracted)} active + {len(existing_drift)} drift){Style.RESET_ALL}")
-                    continue
-                
-                # Copy all subtitle files from episode folder to video folder with language prefix
-                subtitle_files = list(episode_folder.glob('*.srt'))
-                for srt_file in subtitle_files:
-                    # Copy to video folder with language prefix to preserve language info
-                    # Format: LANG_originalname.srt (e.g., EN_The.Witcher.S01E01.srt)
-                    dest_name = f"{lang.upper()}_{srt_file.name}"
-                    dest_path = video_folder / dest_name
-                    shutil.copy2(srt_file, dest_path)
-                    total_extracted += 1
-                
-                if subtitle_files:
-                    print_and_log(f"{acq_tag()} {Fore.GREEN}Extracted {len(subtitle_files)} subtitles from {episode_folder.name} for {matching_video.name}{Style.RESET_ALL}")
+                    # Extended extraction prevention check
+                    # Check if we already extracted subtitles from this episode folder previously
+                    sxxexx_from_episode = episode_sxxexx  # S01E01 format
+                    season_code = sxxexx_from_episode[:3]  # S01
+                    episode_code = sxxexx_from_episode[3:]  # E01
+                    
+                    # Look for existing P-numbered files that match this season, episode, and language
+                    p_numbered_pattern = f"P*.{lang.lower()}.number*.{sxxexx_from_episode}.srt"
+                    existing_p_files = list(video_folder.glob(p_numbered_pattern))
+                    
+                    # Also look for any P-numbered files from this episode (any language) as indicator
+                    any_p_numbered_pattern = f"P*.*.number*.{sxxexx_from_episode}.srt"
+                    any_existing_p_files = list(video_folder.glob(any_p_numbered_pattern))
+                    
+                    if existing_p_files:
+                        print_and_log(f"{acq_tag()} [DEBUG] Found {len(existing_p_files)} P-files for {lang.upper()} {sxxexx_from_episode}, checking prevention...")
+                        
+                        # Verify that the P-files came from this exact SUBTITLES folder and episode
+                        skip_extraction = False
+                        
+                        # Check if season code (S01) matches the current SUBTITLES folder
+                        season_match = season_code in subtitle_item.name
+                        print_and_log(f"{acq_tag()} [DEBUG] Season match: {season_code} in {subtitle_item.name} = {season_match}")
+                        
+                        if season_match:
+                            # Extract episode number from folder name like "episode 1" -> "1"
+                            # Then convert to E01 format for comparison
+                            folder_episode_match = re.search(r'episode\s+(\d+)', episode_folder.name.lower())
+                            if folder_episode_match:
+                                folder_episode_num = folder_episode_match.group(1).zfill(2)  # "1" -> "01"
+                                folder_episode_code = f"E{folder_episode_num}"  # "E01"
+                                episode_match = episode_code == folder_episode_code
+                                print_and_log(f"{acq_tag()} [DEBUG] Episode match: {episode_code} == {folder_episode_code} = {episode_match}")
+                                
+                                if episode_match:
+                                    skip_extraction = True
+                            else:
+                                print_and_log(f"{acq_tag()} [DEBUG] No episode pattern found in '{episode_folder.name}'")
+                        
+                        if skip_extraction:
+                            print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - P-numbered subtitles already extracted from this episode folder{Style.RESET_ALL}")
+                            continue
+                    elif any_existing_p_files:
+                        print_and_log(f"{acq_tag()} [DEBUG] Found {len(any_existing_p_files)} P-files from {sxxexx_from_episode} (other languages), checking if from same episode folder...")
+                        
+                        # Check if any P-file from this episode came from the same SUBTITLES folder and episode folder
+                        season_match = season_code in subtitle_item.name
+                        if season_match:
+                            folder_episode_match = re.search(r'episode\s+(\d+)', episode_folder.name.lower())
+                            if folder_episode_match:
+                                folder_episode_num = folder_episode_match.group(1).zfill(2)
+                                folder_episode_code = f"E{folder_episode_num}"
+                                episode_match = episode_code == folder_episode_code
+                                
+                                if episode_match:
+                                    print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - episode already processed (P-files from other languages exist){Style.RESET_ALL}")
+                                    continue
+                    
+                    # Check if extracted subtitles already exist for this episode
+                    # Include both active P-files and DRIFT-marked P-files
+                    active_pattern = f"*.{lang.lower()}.number*.{episode_sxxexx}.srt"
+                    drift_pattern = f"*.{lang.lower()}.number*.{episode_sxxexx}.DRIFT.srt"
+                    
+                    existing_extracted = list(video_folder.glob(active_pattern))
+                    existing_drift = list(video_folder.glob(drift_pattern))
+                    total_existing = existing_extracted + existing_drift
+                    
+                    print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Checking active pattern: {active_pattern}")
+                    print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Found {len(existing_extracted)} active extracted files")
+                    print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Checking drift pattern: {drift_pattern}")
+                    print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Found {len(existing_drift)} drift extracted files")
+                    print_and_log(f"{acq_tag()} [DEBUG-EXTRACTED] Total existing: {len(total_existing)} files")
+                    
+                    if total_existing:
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - extracted subtitles already exist ({len(total_existing)} files: {len(existing_extracted)} active + {len(existing_drift)} drift){Style.RESET_ALL}")
+                        continue
+                    
+                    # Copy subtitle files from episode folder to video folder, already in the final
+                    # sync-ready P-numbered format (so no Phase 2 filename re-parsing is needed).
+                    # Only files whose own filename resolves to THIS folder's declared language are
+                    # kept as-is; other configured languages are not relevant to a SUBTITLES.Sxx.LANG
+                    # folder. Files whose language can't be detected fall back to the folder's language.
+                    subtitle_files = list(episode_folder.glob('*.srt'))
+                    copied_count = 0
+                    next_number = _get_next_p_number(video_folder, lang, episode_sxxexx)
+                    for srt_file in subtitle_files:
+                        # The SUBTITLES.Sxx.LANG folder name is an explicit, deliberate language
+                        # declaration - trust it over per-filename detection, since leftover release
+                        # naming noise (e.g. "ITA ENG SUB" from the original torrent name) can cause
+                        # false-positive detections that don't reflect the subtitle's actual language.
+                        detected_lang = detect_language_from_filename(srt_file.name)
+                        dest_lang = lang
+                        if detected_lang and detected_lang.upper() != lang.upper():
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}'{srt_file.name}' looks like {detected_lang.upper()} based on its filename, but treating it as '{dest_lang.upper()}' (the SUBTITLES.{folder_season} folder's declared language){Style.RESET_ALL}")
+                        elif not detected_lang:
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}Could not detect language of '{srt_file.name}' from its filename - assuming '{dest_lang.upper()}' (the SUBTITLES.{folder_season} folder's language){Style.RESET_ALL}")
+
+                        dest_name = f"P{next_number * 100}.{dest_lang.lower()}.number{next_number}.{episode_sxxexx}.srt"
+                        dest_path = video_folder / dest_name
+                        shutil.copy2(srt_file, dest_path)
+                        total_extracted += 1
+                        copied_count += 1
+                        next_number += 1
+                    
+                    if copied_count:
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}Extracted {copied_count} subtitles from {episode_folder.name} for {matching_video.name}{Style.RESET_ALL}")
+
+                else:
+                    # --- No language specified (SUBTITLES.Sxx) - search all configured languages ---
+                    target_languages = list(LANGUAGES)
+
+                    # Skip the whole episode only if EVERY configured language is already covered
+                    # by a synchronized subtitle or a previously extracted P-numbered/DRIFT file.
+                    all_languages_covered = True
+                    for check_lang in target_languages:
+                        synced_subtitle_path = video_folder / f"{matching_video.stem}.{check_lang.lower()}.srt"
+                        if synced_subtitle_path.exists():
+                            continue
+                        active_pattern = f"*.{check_lang.lower()}.number*.{episode_sxxexx}.srt"
+                        drift_pattern = f"*.{check_lang.lower()}.number*.{episode_sxxexx}.DRIFT.srt"
+                        if list(video_folder.glob(active_pattern)) or list(video_folder.glob(drift_pattern)):
+                            continue
+                        all_languages_covered = False
+                        break
+
+                    if all_languages_covered:
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}Skipping {episode_folder.name} - subtitles already present for all configured languages{Style.RESET_ALL}")
+                        continue
+
+                    # Detect each file's language from its filename. Files whose language can't be
+                    # detected are never skipped: guess the language (majority vote among the sibling
+                    # files whose language WAS detected, else the first configured language) and log
+                    # the assumption to both the terminal and the logfile.
+                    subtitle_files = list(episode_folder.glob('*.srt'))
+                    configured_languages_upper = [l.upper() for l in LANGUAGES]
+
+                    detected_by_file = {srt_file: detect_language_from_filename(srt_file.name) for srt_file in subtitle_files}
+                    detected_counts = {}
+                    for detected in detected_by_file.values():
+                        if detected:
+                            detected_counts[detected.upper()] = detected_counts.get(detected.upper(), 0) + 1
+                    majority_lang = max(detected_counts, key=detected_counts.get) if detected_counts else None
+
+                    copied_count = 0
+                    next_number_by_lang = {}
+                    for srt_file in subtitle_files:
+                        detected_lang = detected_by_file[srt_file]
+                        if detected_lang:
+                            if detected_lang.upper() not in configured_languages_upper:
+                                continue  # Not a configured language, skip it
+                            dest_lang = detected_lang.lower()
+                        else:
+                            guessed_lang = majority_lang or configured_languages_upper[0]
+                            source_desc = "majority of sibling subtitles in this folder" if majority_lang else "first configured language"
+                            print_and_log(f"{acq_tag()} {Fore.YELLOW}Could not detect language of '{srt_file.name}' from its filename or content - assuming '{guessed_lang}' ({source_desc}){Style.RESET_ALL}")
+                            dest_lang = guessed_lang.lower()
+
+                        # Copy to video folder already in the final sync-ready P-numbered format
+                        if dest_lang not in next_number_by_lang:
+                            next_number_by_lang[dest_lang] = _get_next_p_number(video_folder, dest_lang, episode_sxxexx)
+                        number = next_number_by_lang[dest_lang]
+                        dest_name = f"P{number * 100}.{dest_lang}.number{number}.{episode_sxxexx}.srt"
+                        dest_path = video_folder / dest_name
+                        shutil.copy2(srt_file, dest_path)
+                        total_extracted += 1
+                        copied_count += 1
+                        next_number_by_lang[dest_lang] = number + 1
+
+                    if copied_count:
+                        print_and_log(f"{acq_tag()} {Fore.GREEN}Extracted {copied_count} subtitles from {episode_folder.name} for {matching_video.name}{Style.RESET_ALL}")
         
         finally:
             # Clean up temp directory if we created one
@@ -3119,6 +3276,148 @@ def rename_extracted_subtitles_to_sync_format(video_folder: Path, video_files: l
     else:
         print_and_log(f"{acq_tag()} {Fore.YELLOW}No subtitle files needed renaming{Style.RESET_ALL}")
 
+def _normalize_season_code(season_str: str) -> str:
+    """Normalize a season code like 's1' or 'S01' to 'S01'."""
+    match = re.match(r's(\d{1,2})', season_str.strip(), re.IGNORECASE)
+    return f"S{int(match.group(1)):02d}" if match else season_str.upper()
+
+def _is_valid_subtitles_folder_name(name: str, expected_season: str, configured_languages: list) -> bool:
+    """Check whether a folder/zip/rar name follows the SUBTITLES.Sxx[.LANGUAGE] convention.
+    Leaving out the language is valid too - it means 'search all configured languages'."""
+    name_lower = name.lower()
+    stem = name_lower[:-4] if name_lower.endswith(('.zip', '.rar')) else name_lower
+    parts = stem.split('.')
+    if len(parts) < 2 or parts[0] != 'subtitles':
+        return False
+    if _normalize_season_code(parts[1]) != expected_season.upper():
+        return False
+    if len(parts) == 2:
+        return True
+    return parts[-1].upper() in configured_languages
+
+def show_subtitle_folder_rename_screen(folder_path: Path, expected_season: str, configured_languages: list) -> bool:
+    """
+    In-app rename screen for a misnamed subtitle folder. Loops until the folder is
+    renamed to a valid SUBTITLES.Sxx.LANGUAGE name, or the user cancels.
+    Returns True if renamed, False if cancelled.
+    """
+    while True:
+        clear_and_print_ascii(BANNER_LINE)
+        print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Rename Subtitle Folder\n")
+        print_and_log(f"{Fore.WHITE}Current name:{Style.RESET_ALL} {folder_path.name}")
+        print_and_log(f"{Fore.WHITE}Location:{Style.RESET_ALL} {folder_path.parent}\n")
+        print_and_log(f"{Fore.YELLOW}Required format:{Style.RESET_ALL} SUBTITLES.{expected_season}.LANGUAGE")
+        print_and_log(f"{Fore.YELLOW}Examples:{Style.RESET_ALL} SUBTITLES.{expected_season}.{configured_languages[0]}, SUBTITLES.{expected_season}.{configured_languages[1] if len(configured_languages) > 1 else configured_languages[0]}, SUBTITLES.{expected_season} {Style.DIM}(searches all configured languages){Style.RESET_ALL}")
+        print_and_log(f"{Fore.YELLOW}Configured languages:{Style.RESET_ALL} {', '.join(configured_languages)}")
+        print_and_log(f"{Fore.WHITE}The new name must contain the season ({expected_season}). Leaving out the language (e.g. SUBTITLES.{expected_season}) is also valid and searches all configured languages.{Style.RESET_ALL}\n")
+
+        # An archive file's extension must be preserved: renaming "movie.zip" to just "SUBTITLES.S02.NL"
+        # would silently strip the .zip/.rar extension, making Subservient no longer recognize it as an archive.
+        original_suffix = folder_path.suffix.lower() if folder_path.is_file() and folder_path.suffix.lower() in ('.zip', '.rar') else ''
+
+        new_name = input(f"{Fore.LIGHTYELLOW_EX}Enter the new folder name (or leave empty to cancel):{Style.RESET_ALL} ").strip()
+        if not new_name:
+            return False
+
+        if not _is_valid_subtitles_folder_name(new_name, expected_season, configured_languages):
+            print_and_log(f"\n{Fore.RED}Invalid name: it must be 'SUBTITLES.{expected_season}' or 'SUBTITLES.{expected_season}.LANGUAGE' with LANGUAGE one of: {', '.join(configured_languages)}{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}Press Enter to try again...{Style.RESET_ALL} ")
+            continue
+
+        final_name = new_name
+        if original_suffix and not final_name.lower().endswith(('.zip', '.rar')):
+            final_name += original_suffix
+            print_and_log(f"\n{Fore.CYAN}Keeping the '{original_suffix}' extension: '{final_name}'{Style.RESET_ALL}")
+
+        target_path = folder_path.parent / final_name
+        if target_path.exists():
+            print_and_log(f"\n{Fore.RED}A file or folder named '{final_name}' already exists here.{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}Press Enter to try again...{Style.RESET_ALL} ")
+            continue
+
+        try:
+            folder_path.rename(target_path)
+            print_and_log(f"{acq_tag()} {Fore.GREEN}Renamed '{folder_path.name}' to '{final_name}'.{Style.RESET_ALL}")
+            return True
+        except Exception as e:
+            print_and_log(f"\n{Fore.RED}Failed to rename folder: {e}{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}Press Enter to try again...{Style.RESET_ALL} ")
+
+def confirm_delete_subtitle_folder(folder_path: Path) -> bool:
+    """Confirm and delete a folder/zip that isn't a subtitle folder, then ask whether to continue the run."""
+    clear_and_print_ascii(BANNER_LINE)
+    print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Delete Folder\n")
+    print_and_log(f"{Fore.WHITE}You are about to permanently delete:{Style.RESET_ALL}")
+    print_and_log(f"  {folder_path}\n")
+    print_and_log(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, delete this folder")
+    print_and_log(f"  {Fore.RED}2{Style.RESET_ALL} = No, go back\n")
+    choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+    if choice != "1":
+        return False
+
+    try:
+        if folder_path.is_dir():
+            shutil.rmtree(folder_path)
+        else:
+            folder_path.unlink()
+        print_and_log(f"{acq_tag()} {Fore.GREEN}Deleted: {folder_path.name}{Style.RESET_ALL}")
+    except Exception as e:
+        print_and_log(f"{Fore.RED}Failed to delete '{folder_path.name}': {e}{Style.RESET_ALL}")
+        input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
+        return False
+
+    print_and_log("")
+    print_and_log(f"{Fore.WHITE}Do you want Subservient to continue this run?{Style.RESET_ALL}\n")
+    print_and_log(f"  {Fore.GREEN}1{Style.RESET_ALL} = Yes, continue")
+    print_and_log(f"  {Fore.RED}2{Style.RESET_ALL} = No, exit Subservient\n")
+    cont_choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+    if cont_choice != "1":
+        exit_with_prompt("Press Enter to exit...")
+    return True
+
+def handle_unrecognized_subtitle_folder(folder_path: Path, expected_season: str, configured_languages: list, problem_lines: list = None) -> str:
+    """
+    Interactive resolution menu for a folder that looks like it might be a subtitle
+    folder but doesn't follow the SUBTITLES.Sxx[.LANGUAGE] naming convention (unrecognized
+    name, wrong season code, or an unsupported language).
+    Returns 'renamed', 'deleted' or 'exit'.
+    """
+    if problem_lines is None:
+        problem_lines = [
+            "Folder found that might be a subtitle folder but doesn't follow naming convention:",
+            "",
+            f"{Fore.RED}Unrecognized folder:{Style.RESET_ALL}",
+            f"  - {folder_path.name} (in {folder_path.parent})",
+        ]
+    while True:
+        clear_and_print_ascii(BANNER_LINE)
+        print_and_log(f"{Fore.RED}{Style.BRIGHT}[ERROR] Subtitle Folder Configuration Error!{Style.RESET_ALL}\n")
+        for line in problem_lines:
+            print_and_log(line)
+        print_and_log("")
+        print_and_log(f"{Fore.YELLOW}Required format:{Style.RESET_ALL} SUBTITLES.{expected_season}.LANGUAGE {Fore.WHITE}(or SUBTITLES.{expected_season} to search all configured languages){Style.RESET_ALL}")
+        print_and_log(f"{Fore.YELLOW}Examples:{Style.RESET_ALL} SUBTITLES.{expected_season}.{configured_languages[0]}, SUBTITLES.{expected_season}.{configured_languages[1] if len(configured_languages) > 1 else configured_languages[0]}, SUBTITLES.{expected_season} {Style.DIM}(searches all configured languages){Style.RESET_ALL}\n")
+
+        print_and_log(f"{Fore.WHITE}What would you like to do?{Style.RESET_ALL}\n")
+        print_and_log(f"  {Fore.GREEN}1{Style.RESET_ALL} = Rename the folder {Style.DIM}(rename it here, then continue automatically){Style.RESET_ALL}")
+        print_and_log(f"  {Fore.GREEN}2{Style.RESET_ALL} = Delete the folder {Style.DIM}(it's not a subtitle folder){Style.RESET_ALL}")
+        print_and_log(f"  {Fore.RED}3{Style.RESET_ALL} = Exit Subservient {Style.DIM}(fix it yourself, then run again){Style.RESET_ALL}\n")
+
+        choice = input(f"{Fore.LIGHTYELLOW_EX}Make a choice:{Style.RESET_ALL} ").strip()
+
+        if choice == "1":
+            if show_subtitle_folder_rename_screen(folder_path, expected_season, configured_languages):
+                return 'renamed'
+        elif choice == "2":
+            if confirm_delete_subtitle_folder(folder_path):
+                return 'deleted'
+        elif choice == "3":
+            exit_with_prompt("Press Enter to exit...")
+            return 'exit'
+        else:
+            print_and_log(f"{Fore.RED}Invalid choice. Please select 1, 2, or 3.{Style.RESET_ALL}")
+            time.sleep(1)
+
 def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list):
     """
     Validate all SUBTITLES folders in directory ONCE before processing episodes.
@@ -3144,13 +3443,13 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
     # Find all SUBTITLES folders
     subtitle_folders = []
     wrong_season_folders = []
-    incomplete_folders = []
     wrong_language_folders = []
     unrecognized_folders = []
     packed_archives = []
 
-    # Archive extensions that indicate an unpacked subtitle folder
-    PACKED_EXTENSIONS = {'.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tar.gz', '.tar.bz2', '.tar.xz', '.tgz', '.tbz2', '.cab', '.iso', '.ace', '.arj', '.lzh', '.lha', '.zst', '.tar.zst'}
+    # Archive extensions that indicate an unpacked subtitle folder. .zip and .rar are handled
+    # natively (see extract_subtitles_from_predownloaded_folders) and are excluded here.
+    PACKED_EXTENSIONS = {'.7z', '.tar', '.gz', '.bz2', '.xz', '.tar.gz', '.tar.bz2', '.tar.xz', '.tgz', '.tbz2', '.cab', '.iso', '.ace', '.arj', '.lzh', '.lha', '.zst', '.tar.zst'}
 
     # Get configured languages (convert to uppercase for comparison)
     configured_languages = [lang.upper() for lang in LANGUAGES]
@@ -3170,35 +3469,37 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
                 packed_archives.append(item.name)
                 continue
 
-        if (item.is_dir() or item.name.lower().endswith('.zip')):
+        if (item.is_dir() or item_name_lower.endswith(('.zip', '.rar'))):
             if item_name_lower.startswith('subtitles.s'):
-                # Extract season from folder name using regex
-                # Handle both "subtitles.s01" and "subtitles.s01.en" and "subtitles.s01.zip" formats
-                season_match = re.search(r'subtitles\.(s\d{2})', item_name_lower)
+                # Extract season from folder name using regex (accepts 1 or 2 digits, e.g. S1 or S01)
+                # Handle "subtitles.s01", "subtitles.s1.en", "subtitles.s01.zip" and "subtitles.s01.rar" formats
+                season_match = re.search(r'subtitles\.(s\d{1,2})(\.|$)', item_name_lower)
                 if season_match:
-                    folder_season = season_match.group(1).upper()
+                    folder_season_raw = season_match.group(1)  # e.g. "s1" or "s01", as written
+                    folder_season = _normalize_season_code(folder_season_raw)
                     
                     if folder_season != expected_season:
                         # Wrong season detected
                         wrong_season_folders.append((item.name, folder_season))
                     else:
-                        # Correct season - check if it has language specification and if language is configured
+                        # Correct season - a missing language (e.g. SUBTITLES.S01) is valid too and
+                        # means "search all configured languages"; otherwise the language must be configured.
                         if item.is_dir():
-                            if item_name_lower == f"subtitles.{expected_season.lower()}":
-                                incomplete_folders.append(item.name)
-                            elif item_name_lower.startswith(f"subtitles.{expected_season.lower()}."):
+                            if item_name_lower == f"subtitles.{folder_season_raw}":
+                                subtitle_folders.append(item.name)
+                            elif item_name_lower.startswith(f"subtitles.{folder_season_raw}."):
                                 # Extract language and check if it's configured
                                 folder_lang = item.name.split('.')[-1].upper()
                                 if folder_lang not in configured_languages:
                                     wrong_language_folders.append((item.name, folder_lang))
                                 else:
                                     subtitle_folders.append(item.name)
-                        elif item.is_file() and item.name.lower().endswith('.zip'):
-                            # For ZIP files, check the name before .zip extension
-                            zip_name_without_ext = item_name_lower[:-4]  # Remove .zip
-                            if zip_name_without_ext == f"subtitles.{expected_season.lower()}":
-                                incomplete_folders.append(item.name)
-                            elif zip_name_without_ext.startswith(f"subtitles.{expected_season.lower()}."):
+                        elif item.is_file() and item_name_lower.endswith(('.zip', '.rar')):
+                            # For ZIP/RAR files, check the name before the archive extension
+                            zip_name_without_ext = item_name_lower[:-4]  # Remove .zip or .rar (both 4 chars)
+                            if zip_name_without_ext == f"subtitles.{folder_season_raw}":
+                                subtitle_folders.append(item.name)
+                            elif zip_name_without_ext.startswith(f"subtitles.{folder_season_raw}."):
                                 # Extract language and check if it's configured
                                 folder_lang = item.name.split('.')[-2].upper()  # SUBTITLES.S01.DE.zip -> DE
                                 if folder_lang not in configured_languages:
@@ -3211,12 +3512,12 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
             elif item.is_dir() and item.name.lower() not in skip_dirs:
                 # Any folder not in skip_dirs is considered a potential subtitle folder with wrong naming
                 unrecognized_folders.append(item.name)
-            elif item.is_file() and item.name.lower().endswith('.zip') and not item_name_lower.startswith('subtitles.s'):
-                # Any ZIP file that doesn't follow SUBTITLES.S##.* format is also unrecognized
+            elif item.is_file() and item_name_lower.endswith(('.zip', '.rar')) and not item_name_lower.startswith('subtitles.s'):
+                # Any ZIP/RAR file that doesn't follow SUBTITLES.S##.* format is also unrecognized
                 unrecognized_folders.append(item.name)
     
     # Show errors if any problems found
-    if packed_archives or wrong_season_folders or incomplete_folders or wrong_language_folders or unrecognized_folders:
+    if packed_archives or wrong_season_folders or wrong_language_folders or unrecognized_folders:
         clear_and_print_ascii(BANNER_LINE)
         print_and_log(f"{Fore.RED}{Style.BRIGHT}[ERROR] Subtitle Folder Configuration Error!{Style.RESET_ALL}")
         print_and_log("")
@@ -3258,17 +3559,6 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
             print_and_log(f"{Fore.YELLOW}Video files contain:{Style.RESET_ALL} {expected_season}E01, {expected_season}E02, etc.")
             print_and_log("")
         
-        if incomplete_folders:
-            print_and_log(f"Subtitle folder(s) found without language specification:")
-            print_and_log("")
-            print_and_log(f"{Fore.YELLOW}Incomplete folders:{Style.RESET_ALL}")
-            for folder_name in incomplete_folders:
-                print_and_log(f"  - {folder_name} (Missing language specification) (in {video_folder})")
-            print_and_log("")
-            print_and_log(f"{Fore.YELLOW}Required format:{Style.RESET_ALL} SUBTITLES.{expected_season}.LANGUAGE")
-            print_and_log(f"{Fore.YELLOW}Examples:{Style.RESET_ALL} SUBTITLES.{expected_season}.EN, SUBTITLES.{expected_season}.NL")
-            print_and_log("")
-        
         if wrong_language_folders:
             print_and_log(f"Subtitle folder(s) found with unsupported language:")
             print_and_log("")
@@ -3280,6 +3570,44 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
             print_and_log(f"{Fore.YELLOW}Examples:{Style.RESET_ALL} SUBTITLES.{expected_season}.{configured_languages[0]}, SUBTITLES.{expected_season}.{configured_languages[1] if len(configured_languages) > 1 else configured_languages[0]}")
             print_and_log("")
         
+        # Folders that only fail because they don't follow the naming convention (unrecognized name,
+        # wrong season, or an unsupported language) get an interactive rename/delete/exit menu instead
+        # of a hard exit. A folder without a language (already merged into subtitle_folders above) is
+        # valid on its own and never reaches this point. Packed archives still need manual extraction.
+        if not packed_archives and (unrecognized_folders or wrong_season_folders or wrong_language_folders):
+            problem_folders = []
+            for folder_name in unrecognized_folders:
+                problem_folders.append((video_folder / folder_name, [
+                    "Folder found that might be a subtitle folder but doesn't follow naming convention:",
+                    "",
+                    f"{Fore.RED}Unrecognized folder:{Style.RESET_ALL}",
+                    f"  - {folder_name} (in {video_folder})",
+                ]))
+            for folder_name, folder_season in wrong_season_folders:
+                problem_folders.append((video_folder / folder_name, [
+                    "Subtitle folder found with wrong season code:",
+                    "",
+                    f"{Fore.RED}Wrong season folder:{Style.RESET_ALL}",
+                    f"  - {folder_name} (Found: {folder_season}, Expected: {expected_season}) (in {video_folder})",
+                ]))
+            for folder_name, folder_lang in wrong_language_folders:
+                problem_folders.append((video_folder / folder_name, [
+                    "Subtitle folder found with unsupported language:",
+                    "",
+                    f"{Fore.RED}Wrong language folder:{Style.RESET_ALL}",
+                    f"  - {folder_name} (Found: {folder_lang}, not in configured languages) (in {video_folder})",
+                ]))
+
+            for folder_path, problem_lines in problem_folders:
+                if not folder_path.exists():
+                    continue  # Already resolved above (e.g. renamed away)
+                action = handle_unrecognized_subtitle_folder(folder_path, expected_season, configured_languages, problem_lines)
+                if action == 'exit':
+                    return  # exit_with_prompt() already terminated the process
+            # Re-scan now that the problem folder(s) were renamed or deleted
+            validate_subtitle_folders_in_directory(video_folder, video_files)
+            return
+
         print_and_log(f"{Fore.YELLOW}Possible solutions:{Style.RESET_ALL}")
         print_and_log(f"  1. Create subtitle folders with proper naming: SUBTITLES.{expected_season}.LANGUAGE") 
         print_and_log(f"  2. Add folder name to skip_dirs in config if it's not a subtitle folder")
@@ -3294,11 +3622,12 @@ def validate_subtitle_folders_in_directory(video_folder: Path, video_files: list
         # Log found subtitle languages
         languages = []
         for folder in subtitle_folders:
-            if folder.lower().endswith('.zip'):
-                lang = folder.split('.')[-2].upper()  # SUBTITLES.S01.EN.zip -> EN
+            stem = folder[:-4] if folder.lower().endswith(('.zip', '.rar')) else folder
+            parts = stem.split('.')
+            if len(parts) >= 3:
+                languages.append(parts[-1].upper())
             else:
-                lang = folder.split('.')[-1].upper()   # SUBTITLES.S01.EN -> EN
-            languages.append(lang)
+                languages.append(f"ALL configured ({', '.join(configured_languages)})")
         
         print_and_log(f"{acq_tag()} {Fore.CYAN}Found subtitle folders for: {', '.join(languages)}{Style.RESET_ALL}")
         

@@ -258,7 +258,8 @@ def cleanup_unwanted_files(base_path):
                 print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not remove file {unwanted.name}: {str(e)}{Style.RESET_ALL}")
 def extract_sxxexx_code(name: str) -> str:
     """Extract season/episode code from filename."""
-    match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
+    # Episode allows up to 3 digits (e.g. "S06E001") so it isn't truncated to just the first 2 digits
+    match = re.search(r"[sS](\d{1,2})[eE](\d{1,3})", name)
     if match:
         season = int(match.group(1))
         episode = int(match.group(2))
@@ -301,6 +302,18 @@ def run_extraction_with_progress(cmd, output_path, total_subtitles, current_sub)
     print()
     return stdout, stderr
 
+def order_tracks_by_priority(track_ids, track_lang_map, priority_langs):
+    """Sort kept track IDs by configured language priority (first entry = highest priority / default).
+    Tracks whose language isn't in priority_langs keep their relative order at the end.
+    Returns (ordered_track_ids, default_track_id_or_None)."""
+    if not track_ids:
+        return [], None
+    priority_rank = {lang: idx for idx, lang in enumerate(dict.fromkeys(priority_langs))}
+    unmatched_rank = len(priority_rank)
+    ordered = sorted(track_ids, key=lambda tid: priority_rank.get(track_lang_map.get(tid, 'und'), unmatched_rank))
+    default_id = ordered[0] if priority_rank else None
+    return ordered, default_id
+
 def run_remux_with_progress(cmd, temp_path, orig_size):
     """Run video remux command with file size-based progress bar."""
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -330,6 +343,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     extracted_files = []
     deleted_files = []
     forced_vobsub_to_remove = []  # Initialize early to avoid UnboundLocalError
+    forced_text_subtitles = []  # Initialize early to avoid UnboundLocalError
     
     # Clean up any leftover .temp.mkv files from previous failed operations
     parent_dir = file_path.parent
@@ -387,7 +401,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
 
     try:
         info_cmd_json = ['mkvmerge', '-J', str(file_path)]
-        result_json = subprocess.run(info_cmd_json, capture_output=True, text=True)
+        result_json = subprocess.run(info_cmd_json, capture_output=True, text=True, encoding='utf-8', errors='replace')
         if result_json.returncode != 0:
             print_and_log(f"{ext_tag()} {Fore.RED}Error reading file (JSON).{Style.RESET_ALL}")
             return
@@ -567,7 +581,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         # Jump directly to remux section (check if unwanted tracks need removal)
     else:
         # Only run mkvmerge -i if we need to extract subtitles
-        lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True).stdout.splitlines()
+        lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.splitlines()
         subtitle_lines = [line for line in lines if 'subtitles' in line.lower()]
         
         total_subtitles_to_extract = 0
@@ -763,12 +777,16 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     # Continue with remux section (this runs regardless of whether extraction was skipped)
     did_remux = False
     info_cmd_json = ['mkvmerge', '-J', str(file_path)]
-    result_json = subprocess.run(info_cmd_json, capture_output=True, text=True)
+    result_json = subprocess.run(info_cmd_json, capture_output=True, text=True, encoding='utf-8', errors='replace')
     audio_tracks = []
     unwanted_audio_tracks = []
     subtitle_tracks = []
     unwanted_subtitle_tracks = []
     forced_subtitle_track_ids = set()
+    audio_default_track_id = None
+    subtitle_default_track_id = None
+    audio_default_changed = False
+    subtitle_default_changed = False
     if PRESERVE_FORCED_SUBTITLES:
         for forced_sub in forced_text_subtitles:
             forced_subtitle_track_ids.add(forced_sub['id'])
@@ -782,6 +800,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             unwanted_subtitle_tracks.append(tid)
     mkv_audio_langs_3 = set()
     mkv_audio_track_langs = {}
+    mkv_audio_current_default = None  # track_id currently flagged as default (if any)
     if result_json.returncode == 0:
         try:
             mkv_info = json.loads(result_json.stdout)
@@ -794,6 +813,8 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 if track_type == 'audio':
                     mkv_audio_langs_3.add(lang_code_3)
                     mkv_audio_track_langs[track_id] = lang_code_3
+                    if track.get('properties', {}).get('default_track', False):
+                        mkv_audio_current_default = track_id
                     log(f"[DEBUG] Stored MKV audio track: id={track_id}, original='{lang_code}', iso3='{lang_code_3}'")
             log(f"[DEBUG] All MKV audio 3-letter codes: {sorted(mkv_audio_langs_3)}")
         except Exception as e:
@@ -821,10 +842,13 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 pass
     else:
         config_audio_langs_3 = set()
+        config_audio_langs_3_ordered = []
         for lang in AUDIO_TRACK_LANGUAGES:
             lang3 = to_iso639_2(lang)
             log(f"[DEBUG] Config audio language '{lang}' converted to 3-letter '{lang3}'")
             config_audio_langs_3.add(lang3)
+            if lang3 not in config_audio_langs_3_ordered:
+                config_audio_langs_3_ordered.append(lang3)
         log(f"[DEBUG] All config audio 3-letter codes: {sorted(config_audio_langs_3)}")
     
         primary_audio_track = None
@@ -919,6 +943,16 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 else:
                     print_and_log(f"{ext_tag()} {Fore.RED}Marking audio track {track_id} (lang: {lang_code_3}) for removal{Style.RESET_ALL}")
                 unwanted_audio_tracks.append(track_id)
+    
+        try:
+            audio_tracks, audio_default_track_id = order_tracks_by_priority(audio_tracks, mkv_audio_track_langs, config_audio_langs_3_ordered)
+            audio_default_changed = audio_default_track_id is not None and audio_default_track_id != mkv_audio_current_default
+            if audio_default_track_id is not None:
+                log(f"[DEBUG] Audio track priority order (audio_track_languages): {audio_tracks} - default: {audio_default_track_id}")
+        except Exception as e:
+            print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not apply audio_track_languages priority order - keeping existing track order: {e}{Style.RESET_ALL}")
+            audio_default_track_id = None
+            audio_default_changed = False
     
     missing_langs = config_audio_langs_3 - mkv_audio_langs_3 if AUDIO_TRACK_LANGUAGES not in ('ALL', None) else set()
     if result_json.returncode == 0:
@@ -1114,13 +1148,48 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     subtitle_tracks = [tid for tid in subtitle_tracks if tid not in unwanted_subtitle_tracks]
     log(f"[DEBUG] Subtitle tracks kept (final): {subtitle_tracks}")
     log(f"[DEBUG] Subtitle tracks removed: {unwanted_subtitle_tracks}")
+
+    # Reorder kept subtitle tracks by configured language priority (languages=) and pick the default.
+    # Wrapped defensively: any failure here just keeps the pre-existing order/flags, it never aborts the run.
+    subtitle_current_default = None
+    try:
+        subtitle_json_tracks = (json.loads(result_json.stdout).get('tracks', []) if result_json.returncode == 0 else [])
+        subtitle_lang_map = {}
+        subtitle_forced_ids = set()
+        for track in subtitle_json_tracks:
+            if track.get('type') != 'subtitles':
+                continue
+            tid = str(track.get('id', '?'))
+            subtitle_lang_map[tid] = map_lang_3to2(track.get('properties', {}).get('language', 'und').lower())
+            if track.get('properties', {}).get('default_track', False):
+                subtitle_current_default = tid
+            if track.get('properties', {}).get('forced_track', False) or track.get('properties', {}).get('flag-forced', False):
+                subtitle_forced_ids.add(tid)
+        subtitle_tracks, subtitle_default_track_id = order_tracks_by_priority(subtitle_tracks, subtitle_lang_map, WANTED_LANGUAGES)
+        if subtitle_default_track_id in subtitle_forced_ids:
+            # Prefer a non-forced track as the default; forced tracks are meant to be supplementary.
+            non_forced = [tid for tid in subtitle_tracks if tid not in subtitle_forced_ids]
+            subtitle_default_track_id = non_forced[0] if non_forced else subtitle_default_track_id
+        subtitle_default_changed = subtitle_default_track_id is not None and subtitle_default_track_id != subtitle_current_default
+        if subtitle_default_track_id is not None:
+            log(f"[DEBUG] Subtitle track priority order (languages): {subtitle_tracks} - default: {subtitle_default_track_id}")
+    except Exception as e:
+        print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not apply languages priority order to subtitle tracks - keeping existing track order: {e}{Style.RESET_ALL}")
+        subtitle_default_track_id = None
+        subtitle_default_changed = False
+
     # Non-MKV files (MP4/AVI) with subtitle tracks need remux to MKV even if no tracks are
     # unwanted — mkvmerge auto-converts TIMED_TEXT → SubRip/SRT during remux, after which
     # the post-remux extraction pass can extract them with mkvextract.
     needs_conversion_remux = (original_suffix != '.mkv' and not all(has_lang.values()) and bool(subtitle_tracks))
     if needs_conversion_remux and not unwanted_audio_tracks and not unwanted_subtitle_tracks:
         print_and_log(f"{ext_tag()} {Fore.CYAN}Non-MKV file with internal subtitle tracks — remuxing to MKV for subtitle conversion...{Style.RESET_ALL}")
-    if unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux:
+    audio_order_changed = bool(audio_tracks) and audio_tracks != sorted(audio_tracks, key=int)
+    subtitle_order_changed = bool(subtitle_tracks) and subtitle_tracks != sorted(subtitle_tracks, key=int)
+    track_priority_changed = audio_order_changed or audio_default_changed or subtitle_order_changed or subtitle_default_changed
+    if track_priority_changed and not (unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux):
+        print_and_log(f"{ext_tag()} {Fore.CYAN}Audio/subtitle priority order changed in config — remuxing to apply new track order/default track...{Style.RESET_ALL}")
+    if unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux or track_priority_changed:
         temp_path = parent_dir / (base_name + ".temp.mkv")
         # mkvmerge always outputs MKV; for non-mkv inputs the final file gets .mkv extension
         final_path = file_path if file_path.suffix.lower() == '.mkv' else file_path.with_suffix('.mkv')
@@ -1138,6 +1207,22 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             mkvmerge_cmd += ['--subtitle-tracks', ','.join(subtitle_tracks)]
         else:
             mkvmerge_cmd += ['--no-subtitles']
+        # Apply the configured priority order (video first, then audio/subtitles in priority order)
+        # and default-track flags. Wrapped defensively so a bad/unexpected mkvmerge JSON structure
+        # never aborts the remux - it just falls back to mkvmerge's own default ordering/flags.
+        try:
+            video_track_ids = [str(t.get('id', '?')) for t in json.loads(result_json.stdout).get('tracks', []) if t.get('type') == 'video'] if result_json.returncode == 0 else []
+            track_order_ids = video_track_ids + audio_tracks + subtitle_tracks
+            if track_order_ids:
+                mkvmerge_cmd += ['--track-order', ','.join(f'0:{tid}' for tid in track_order_ids)]
+            if audio_tracks and audio_default_track_id is not None:
+                for tid in audio_tracks:
+                    mkvmerge_cmd += ['--default-track-flag', f'{tid}:{"1" if tid == audio_default_track_id else "0"}']
+            if subtitle_tracks and subtitle_default_track_id is not None:
+                for tid in subtitle_tracks:
+                    mkvmerge_cmd += ['--default-track-flag', f'{tid}:{"1" if tid == subtitle_default_track_id else "0"}']
+        except Exception as e:
+            print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not apply track order/default flags - remuxing with default mkvmerge ordering: {e}{Style.RESET_ALL}")
         mkvmerge_cmd += [str(file_path)]
         log(f"[DEBUG] mkvmerge command: {' '.join(mkvmerge_cmd)}")
         log(f"[DEBUG] Audio tracks kept: {audio_tracks}")
@@ -1251,7 +1336,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     unwanted_track_for_lang = {}  # lang -> {'track_id': str, 'srt_path': Path} for first-occurrence unwanted tracks (temp, for size comparison)
     if did_remux and not all(has_lang.values()) and original_suffix != '.mkv':
         print_and_log(f"{ext_tag()} {Fore.CYAN}Post-remux: scanning converted MKV for newly extractable subtitle tracks...{Style.RESET_ALL}")
-        pr_lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True).stdout.splitlines()
+        pr_lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.splitlines()
         pr_subtitle_lines = [line for line in pr_lines if 'subtitles' in line.lower()]
 
         pr_total = sum(
@@ -1452,7 +1537,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     if post_remux_tracks_to_strip:
         print_and_log(f"{ext_tag()} {Fore.LIGHTYELLOW_EX}Cleanup remux: removing {len(post_remux_tracks_to_strip)} unwanted internal subtitle track(s) from MKV...{Style.RESET_ALL}")
         try:
-            pr_info = json.loads(subprocess.run(['mkvmerge', '-J', str(file_path)], capture_output=True, text=True).stdout)
+            pr_info = json.loads(subprocess.run(['mkvmerge', '-J', str(file_path)], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout)
             all_track_ids = [str(t.get('id')) for t in pr_info.get('tracks', [])]
             keep_tracks = [tid for tid in all_track_ids if tid not in post_remux_tracks_to_strip]
             sub_keep = [tid for tid in keep_tracks if any(

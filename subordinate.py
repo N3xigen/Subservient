@@ -1796,10 +1796,67 @@ def main():
                                 print_and_log(f"     {Fore.CYAN}• Ensuring all episodes in a series follow the same naming pattern{Style.RESET_ALL}")
                                 
                                 print_and_log(f"\n     {Fore.LIGHTRED_EX}Series processing requires consistent episode naming!{Style.RESET_ALL}")
-                                print_and_log(f"\n{Fore.RED}  1{Style.RESET_ALL} = Exit to fix naming")
+                                print_and_log(f"\n{Fore.GREEN}  1{Style.RESET_ALL} = Attempt to automatically rename these files")
+                                print_and_log(f"{Fore.RED}  2{Style.RESET_ALL} = Exit to fix naming manually")
                                 
-                                naming_choice = input(f"\nPress [1] to exit: ").strip()
+                                naming_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
                                 if naming_choice == "1":
+                                    utils.clear_and_print_ascii(BANNER_LINE)
+                                    print_and_log(f"{Style.BRIGHT}{Fore.BLUE}  [ Automatic Series Renaming ]{Style.RESET_ALL}\n")
+                                    print_and_log(f"{Fore.WHITE}Subservient will scan the problematic file(s) and try to detect the season{Style.RESET_ALL}")
+                                    print_and_log(f"{Fore.WHITE}and episode number from the filename (and parent folder, if needed).{Style.RESET_ALL}")
+                                    print_and_log(f"\n{Fore.WHITE}It recognizes many common naming styles, such as:{Style.RESET_ALL}")
+                                    print_and_log(f"     {Fore.CYAN}• Season 1 Episode 01, Seizoen 1 Aflevering 3, Saison 1 Épisode 2, Staffel 1 Folge 4{Style.RESET_ALL}")
+                                    print_and_log(f"     {Fore.CYAN}• 1x01, S1E1, S1 E01, S01.E01{Style.RESET_ALL}")
+                                    print_and_log(f"     {Fore.CYAN}• 'Episode 5' inside a 'Season 1' parent folder{Style.RESET_ALL}")
+                                    print_and_log(f"     {Fore.CYAN}• '01 - Title.mkv' inside a 'Season 1' parent folder{Style.RESET_ALL}")
+                                    print_and_log(f"\n{Fore.WHITE}Recognized files get an {Fore.LIGHTYELLOW_EX}SxxExx{Fore.WHITE} code appended to the end of their{Style.RESET_ALL}")
+                                    print_and_log(f"{Fore.WHITE}filename (e.g. 'Pilot.avi' → 'Pilot S01E01.avi'), keeping the original name intact.{Style.RESET_ALL}")
+                                    print_and_log(f"\n{Fore.YELLOW}⚠️  Not every naming style can be recognized. Files that can't be understood{Style.RESET_ALL}")
+                                    print_and_log(f"{Fore.YELLOW}will be left untouched and must be renamed manually before Subservient can start.{Style.RESET_ALL}")
+                                    
+                                    print_and_log(f"\n{Fore.GREEN}  1{Style.RESET_ALL} = Yes, attempt automatic renaming")
+                                    print_and_log(f"{Fore.RED}  2{Style.RESET_ALL} = No, go back")
+                                    
+                                    confirm_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+                                    if confirm_choice == "1":
+                                        rename_result = utils.auto_rename_series_naming_issues(local_path, naming_validation['problematic_files'])
+                                        
+                                        utils.clear_and_print_ascii(BANNER_LINE)
+                                        print_and_log(f"{Style.BRIGHT}{Fore.BLUE}  [ Automatic Series Renaming - Result ]{Style.RESET_ALL}\n")
+                                        
+                                        if rename_result['renamed_count'] > 0:
+                                            print_and_log(f"{Fore.GREEN}✔ Successfully renamed {rename_result['renamed_count']} file(s):{Style.RESET_ALL}")
+                                            for item in rename_result['renamed']:
+                                                print_and_log(f"     {Fore.LIGHTGREEN_EX}• {item['old']} → {item['new']}{Style.RESET_ALL}")
+                                        else:
+                                            print_and_log(f"{Fore.YELLOW}No files could be automatically renamed.{Style.RESET_ALL}")
+                                        
+                                        if rename_result['still_problematic_count'] > 0:
+                                            print_and_log(f"\n{Fore.RED}⚠️  Could not recognize {rename_result['still_problematic_count']} file(s):{Style.RESET_ALL}")
+                                            for file_info in rename_result['still_problematic'][:10]:
+                                                print_and_log(f"     {Fore.LIGHTRED_EX}• {file_info['path']}{Style.RESET_ALL}")
+                                            if rename_result['still_problematic_count'] > 10:
+                                                remaining = rename_result['still_problematic_count'] - 10
+                                                print_and_log(f"     {Fore.LIGHTBLACK_EX}... and {remaining} more file(s){Style.RESET_ALL}")
+                                            print_and_log(f"\n     {Fore.YELLOW}Not everything could be renamed automatically. Please rename the file(s){Style.RESET_ALL}")
+                                            print_and_log(f"     {Fore.YELLOW}listed above manually, then restart Subservient.{Style.RESET_ALL}")
+                                            input(f"\nPress Enter to exit...")
+                                            print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting after automatic renaming attempt.")
+                                            return
+                                        else:
+                                            print_and_log(f"\n{Fore.GREEN}✔ All problematic files were fixed!{Style.RESET_ALL}")
+                                            print_and_log(f"\n{Fore.LIGHTYELLOW_EX}  Would you like to continue?{Style.RESET_ALL}")
+                                            print_and_log(f"{Fore.GREEN}  1{Style.RESET_ALL} = Yes, go back to the checklist and start Subservient")
+                                            print_and_log(f"{Fore.RED}  2{Style.RESET_ALL} = No, exit Subservient")
+                                            continue_choice = input(f"\nMake a choice [{Fore.GREEN}1{Style.RESET_ALL}/{Fore.RED}2{Style.RESET_ALL}]: ").strip()
+                                            if continue_choice == "2":
+                                                print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting after automatic renaming attempt.")
+                                                return
+                                            continue
+                                    else:
+                                        continue
+                                elif naming_choice == "2":
                                     print_and_log(f"{Style.BRIGHT}{Fore.BLUE}[Subservient]{Style.RESET_ALL} Exiting due to series naming issues.")
                                     print_and_log(f"{Fore.YELLOW}Required action: Rename video files to include proper SxxExx episode numbering.{Style.RESET_ALL}")
                                     print_and_log(f"{Fore.WHITE}Example: 'Episode 1.mkv' → 'Show Name S01E01.mkv'{Style.RESET_ALL}")

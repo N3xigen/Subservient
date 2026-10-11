@@ -469,10 +469,8 @@ def print_rankings_table(rankings, final=False, clear_lines=0):
             quality_score = calculate_quality_score(offset, score)
             quality_tier, tier_color = get_quality_tier(quality_score)
             if bonus > 0:
-                final_score = min(100, quality_score + bonus)
-                _, final_tier_color = get_quality_tier(final_score)
                 quality_numeric = f"{quality_score}+{bonus}"
-                quality_display = f"{tier_color}{quality_score}{Fore.LIGHTMAGENTA_EX}+{bonus}{final_tier_color}/100{Style.RESET_ALL}"
+                quality_display = f"{tier_color}{quality_score}{Fore.LIGHTMAGENTA_EX}+{bonus}{tier_color}/100{Style.RESET_ALL}"
             else:
                 quality_numeric = f"{quality_score}"
                 quality_display = f"{tier_color}{quality_score}{tier_color}/100{Style.RESET_ALL}"
@@ -851,7 +849,8 @@ def read_series_mode_from_config(config_path):
 def extract_sxxexx_code(name: str) -> str | None:
     """Extract season/episode code from filename."""
     import re
-    match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
+    # Episode allows up to 3 digits (e.g. "S06E001") so it isn't truncated to just the first 2 digits
+    match = re.search(r"[sS](\d{1,2})[eE](\d{1,3})", name)
     return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
 
 
@@ -1210,9 +1209,19 @@ def cleanup_episode_and_temp_folders():
         for d in dirs[:]:  # Use slice copy since we'll be modifying the list
             folder_path = os.path.join(root, d)
             folder_name_lower = d.lower()
-            
-            # Remove episode folders (episode 1, episode 01, etc.)
-            if re.match(r'episode\\s*\\d+', folder_name_lower):
+            parent_name_lower = os.path.basename(root).lower()
+            grandparent_name_lower = os.path.basename(os.path.dirname(root)).lower()
+            # An episode subfolder can sit directly inside a SUBTITLES.Sxx(.LANG) folder,
+            # or one level deeper inside a "Season X"/"Seizoen X" wrapper folder.
+            is_inside_subtitles_folder = (
+                parent_name_lower.startswith('subtitles.s') or
+                (re.match(r'(season|seizoen)\s*\d+', parent_name_lower) and grandparent_name_lower.startswith('subtitles.s'))
+            )
+
+            # Remove episode folders (episode 1, episode 01, etc., or a SxxExx-style
+            # folder name such as "Show.Name.S01E01...") sitting inside a SUBTITLES
+            # folder - these are the per-episode subfolders left over after extraction.
+            if re.match(r'episode\s*\d+', folder_name_lower) or (is_inside_subtitles_folder and extract_sxxexx_code(d)):
                 try:
                     import shutil
                     shutil.rmtree(folder_path)
@@ -2054,8 +2063,12 @@ def mark_subtitle_as_drift(subtitle_path, lang, create_copies=False):
         print_and_log(f"{sync_tag()} {Fore.RED}Error marking subtitle as DRIFT: {str(e)}{Style.RESET_ALL}")
         return None
 
-def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True, video=None, silent=False):
-    """Clean up numbered, failed, and drift subtitle files for a language."""
+def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True, video=None, silent=False, clean_numbered=True):
+    """Clean up numbered, failed, and drift subtitle files for a language.
+
+    clean_numbered=False leaves plain (untested-by-other-parts) numbered candidates alone,
+    used while a multi-part episode still has sibling parts that need the shared candidate pool.
+    """
     deleted_drift_keys = set()
     for f in os.listdir(video_dir):
         full_path = os.path.abspath(os.path.join(video_dir, f))
@@ -2087,6 +2100,8 @@ def cleanup_drift_and_failed(video_dir, lang, keep_file=None, clean_drifts=True,
         
         # Remove files based on patterns
         if is_numbered:
+            if not clean_numbered:
+                continue
             if keep_file and full_path == os.path.abspath(keep_file):
                 continue
             try:
@@ -2119,11 +2134,31 @@ processed_subs = set()
 total_videos = len(videos)
 acquisition_needed = False  
 
+# Multi-part episodes (e.g. "Broken (Part 1)"/"Broken (Part 2)") share the same SxxExx code
+# across several video files. Track how many siblings still need this code's candidate pool
+# so DRIFT-marking of non-winning candidates can be deferred until the last part is done.
+series_code_totals = {}
+if SERIES_MODE:
+    for _v in videos:
+        _c = extract_sxxexx_code(_v)
+        if _c:
+            _key = (os.path.dirname(_v), _c)
+            series_code_totals[_key] = series_code_totals.get(_key, 0) + 1
+series_code_seen = {}
+
 for idx, video in enumerate(videos, 1):
     clear_and_print_ascii(BANNER_LINE)
     print_video_header(video, idx, total_videos)
     video_dir = os.path.dirname(video)
     video_basename, _ = os.path.splitext(video)
+
+    is_last_part_for_code = True
+    if SERIES_MODE:
+        _code = extract_sxxexx_code(video)
+        if _code:
+            _key = (video_dir, _code)
+            series_code_seen[_key] = series_code_seen.get(_key, 0) + 1
+            is_last_part_for_code = series_code_seen[_key] >= series_code_totals.get(_key, 1)
     
     all_subs_exist = True
     has_numbered_subs = False
@@ -2384,10 +2419,10 @@ for idx, video in enumerate(videos, 1):
                     # Store rejected count BEFORE calling add_offset_entry so it can be read
                     rejected_subtitle_counts[movie_key] = rejected_count
                     
-                    # Calculate quality score (base) and apply bonus
+                    # Calculate quality score (base) - bonus only affects batch ranking, never the
+                    # accept/reject decision below, so the tier label must reflect the base score too.
                     quality_score = calculate_quality_score(best_offset, best_score)
-                    final_quality = min(100, quality_score + best_bonus)
-                    quality_tier, tier_color = get_quality_tier(final_quality)
+                    quality_tier, tier_color = get_quality_tier(quality_score)
                     score_display = f"{quality_score}+{best_bonus}" if best_bonus > 0 else f"{quality_score}"
                     
                     # Determine if manual verification is needed
@@ -2435,14 +2470,17 @@ for idx, video in enumerate(videos, 1):
                     all_batch_subs = synced_subs | {s for s in subs_sorted
                                                     if not s.endswith('.DRIFT.srt')
                                                     and not s.endswith('.FAILED.srt')}
-                    for batch_sub in all_batch_subs:
-                        if os.path.exists(batch_sub):
-                            batch_base, batch_ext = os.path.splitext(batch_sub)
-                            batch_drift = f"{batch_base}.DRIFT{batch_ext}"
-                            try:
-                                os.rename(batch_sub, batch_drift)
-                            except Exception as e:
-                                print_and_log(f"{sync_tag()} {Fore.RED}Could not preserve batch candidate as DRIFT: {e}{Style.RESET_ALL}")
+                    if is_last_part_for_code:
+                        for batch_sub in all_batch_subs:
+                            if os.path.exists(batch_sub):
+                                batch_base, batch_ext = os.path.splitext(batch_sub)
+                                batch_drift = f"{batch_base}.DRIFT{batch_ext}"
+                                try:
+                                    os.rename(batch_sub, batch_drift)
+                                except Exception as e:
+                                    print_and_log(f"{sync_tag()} {Fore.RED}Could not preserve batch candidate as DRIFT: {e}{Style.RESET_ALL}")
+                    else:
+                        print_and_log(f"{sync_tag()} {Fore.CYAN}Multi-part episode - keeping {len(all_batch_subs)} candidate(s) available for remaining part(s), not marking as DRIFT{Style.RESET_ALL}")
 
                     # Save sync quality metadata for DRIFT/FAILED selection menus
                     for b_sub, _, b_offset, b_score, b_quality, b_bonus in bonused_results:
@@ -2465,13 +2503,13 @@ for idx, video in enumerate(videos, 1):
                             pass
 
                     # Perform cleanup silently first (clean_drifts=False: preserve batch DRIFT markers)
-                    cleanup_drift_and_failed(video_dir, lang, keep_file=final_output, clean_drifts=False, video=video, silent=True)
+                    cleanup_drift_and_failed(video_dir, lang, keep_file=final_output, clean_drifts=False, video=video, silent=True, clean_numbered=is_last_part_for_code)
                     
                     # Give user 5 seconds to review the final rankings and selection
                     time.sleep(5)
                     
                     # Now show cleanup messages
-                    cleanup_drift_and_failed(video_dir, lang, keep_file=final_output, clean_drifts=False, video=video, silent=False)
+                    cleanup_drift_and_failed(video_dir, lang, keep_file=final_output, clean_drifts=False, video=video, silent=False, clean_numbered=is_last_part_for_code)
                     
                     found_good = True
                     successful_syncs += 1
@@ -2502,16 +2540,19 @@ for idx, video in enumerate(videos, 1):
             
             # Mark as DRIFT (not FAILED) so acquisition can try next batch
             if not found_good:
-                for sub in subs_sorted:
-                    if not sub.endswith('.DRIFT.srt') and not sub.endswith('.FAILED.srt'):
-                        base_name = os.path.splitext(sub)[0]
-                        drift_name = f"{base_name}.DRIFT{os.path.splitext(sub)[1]}"
-                        try:
-                            os.rename(sub, drift_name)
-                            print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as DRIFT: {os.path.basename(drift_name)}{Style.RESET_ALL}")
-                            drift_subs.append(sub)
-                        except Exception as e:
-                            print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to DRIFT: {str(e)}{Style.RESET_ALL}")
+                if is_last_part_for_code:
+                    for sub in subs_sorted:
+                        if not sub.endswith('.DRIFT.srt') and not sub.endswith('.FAILED.srt'):
+                            base_name = os.path.splitext(sub)[0]
+                            drift_name = f"{base_name}.DRIFT{os.path.splitext(sub)[1]}"
+                            try:
+                                os.rename(sub, drift_name)
+                                print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as DRIFT: {os.path.basename(drift_name)}{Style.RESET_ALL}")
+                                drift_subs.append(sub)
+                            except Exception as e:
+                                print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to DRIFT: {str(e)}{Style.RESET_ALL}")
+                else:
+                    print_and_log(f"{sync_tag()} {Fore.CYAN}Multi-part episode - leaving {len(subs_sorted)} candidate(s) untouched for remaining part(s){Style.RESET_ALL}")
         
         else:
             # STANDARD MODE: First match mode (original behavior)
@@ -2552,25 +2593,47 @@ for idx, video in enumerate(videos, 1):
                 if sync_success:
                     # Reject low/negative correlation scores (empty or mismatched subtitle)
                     if correlation_score < 2500:
+                        if not is_last_part_for_code:
+                            print_and_log(f"{sync_tag()} {Fore.CYAN}Correlation score too low ({correlation_score:.0f}) - multi-part episode, leaving candidate for remaining part(s) instead of marking as DRIFT{Style.RESET_ALL}")
+                            try:
+                                os.remove(output_sub)
+                            except Exception:
+                                pass
+                            continue
                         print_and_log(f"{sync_tag()} {Fore.RED}⚠ Correlation score too low ({correlation_score:.0f}) - likely empty or mismatched subtitle, marking as DRIFT{Style.RESET_ALL}")
                         
                         try:
                             os.remove(output_sub)
                             mark_subtitle_as_drift(sub, lang, create_copies=False)
                             drift_subs.append(sub)
+                            try:
+                                save_drift_subtitle_metadata(DRIFT_METADATA_FILE, sub, 0.0, float(correlation_score), 0, float(offset_seconds), rejected=True)
+                            except Exception:
+                                pass
                             continue
                         except Exception as e:
                             print_and_log(f"{sync_tag()} {Fore.RED}Error handling negative score: {str(e)}{Style.RESET_ALL}")
                             continue
                     
                     if offset_seconds > REJECT_OFFSET_THRESHOLD:
+                        if not is_last_part_for_code:
+                            print_and_log(f"{sync_tag()} {Fore.CYAN}High offset detected ({offset_seconds:.3f}s) - multi-part episode, leaving candidate for remaining part(s) instead of marking as DRIFT{Style.RESET_ALL}")
+                            try:
+                                os.remove(output_sub)
+                            except Exception:
+                                pass
+                            continue
                         print_and_log(f"{sync_tag()} {Fore.RED}⚠ High offset detected ({offset_seconds:.3f}s > {REJECT_OFFSET_THRESHOLD}s) - marking as DRIFT{Style.RESET_ALL}")
                         
                         try:
                             os.remove(output_sub)
                             mark_subtitle_as_drift(sub, lang, create_copies=False)  
                             drift_subs.append(sub)
-                            
+                            try:
+                                _q = calculate_quality_score(offset_seconds, correlation_score)
+                                save_drift_subtitle_metadata(DRIFT_METADATA_FILE, sub, _q, float(correlation_score), 0, float(offset_seconds), rejected=True)
+                            except Exception:
+                                pass
                             continue
                         except Exception as e:
                             print_and_log(f"{sync_tag()} {Fore.RED}Error handling high offset: {str(e)}{Style.RESET_ALL}")
@@ -2593,7 +2656,7 @@ for idx, video in enumerate(videos, 1):
                     successful_syncs_per_lang[lang] = successful_syncs_per_lang.get(lang, 0) + 1
                     processed_subs.add(sub)
                     
-                    cleanup_drift_and_failed(video_dir, lang, keep_file=output_sub, clean_drifts=True, video=video)
+                    cleanup_drift_and_failed(video_dir, lang, keep_file=output_sub, clean_drifts=True, video=video, clean_numbered=is_last_part_for_code)
                     
                     break
                 else:
@@ -2612,6 +2675,10 @@ for idx, video in enumerate(videos, 1):
                     try:
                         os.rename(sub, failed_name)
                         print_and_log(f"{sync_tag()} {Fore.YELLOW}Marked as FAILED: {os.path.basename(failed_name)}{Style.RESET_ALL}")
+                        try:
+                            save_drift_subtitle_metadata(DRIFT_METADATA_FILE, sub, 0.0, 0.0, 0, 0.0, rejected=True)
+                        except Exception:
+                            pass
                     except Exception as e:
                         print_and_log(f"{sync_tag()} {Fore.RED}Could not rename to FAILED: {str(e)}{Style.RESET_ALL}")
         
@@ -2677,13 +2744,9 @@ else:
                             print_and_log(f"{sync_tag()} {Fore.YELLOW}Final cleanup: removed DRIFT: {f}{Style.RESET_ALL}")
                         except Exception as e:
                             print_and_log(f"{sync_tag()} {Fore.RED}Could not remove DRIFT {f}: {e}{Style.RESET_ALL}")
-    # Smart Sync: DRIFT files are intentionally kept as batch markers for acquisition
-    # Clean up the central drift metadata file — no longer needed after synchronisation
-    try:
-        if os.path.exists(DRIFT_METADATA_FILE):
-            os.remove(DRIFT_METADATA_FILE)
-    except Exception:
-        pass
+    # Smart Sync: DRIFT files are intentionally kept as batch markers for acquisition.
+    # Note: DRIFT_METADATA_FILE is kept until manual verification is fully done — it feeds
+    # the Q/C/bonus info shown when browsing DRIFT candidates in the verification menu.
 all_subs_present = True
 missing_langs = set()
 missing_details = {}
@@ -3195,8 +3258,7 @@ def show_auto_accepted_summary():
                         score = float(correlation_score)
                         bonus = int(parts[4].strip()) if len(parts) >= 5 else 0
                         quality_score = calculate_quality_score(offset, score)
-                        final_quality = min(100, quality_score + bonus)
-                        quality_tier, tier_color = get_quality_tier(final_quality)
+                        quality_tier, tier_color = get_quality_tier(quality_score)
                         score_display = f"{quality_score}+{bonus}" if bonus > 0 else f"{quality_score:.0f}"
                         
                         print_and_log(f"[{Fore.YELLOW}{idx}{Style.RESET_ALL}]  {Fore.CYAN}{title}{Style.RESET_ALL}  •  Quality: {tier_color}{score_display}/100 {quality_tier}{Style.RESET_ALL}  •  Confidence: {Fore.GREEN}{score:,.0f}{Style.RESET_ALL}  •  Offset: {offset_str}")
@@ -3554,6 +3616,9 @@ def validate_and_update_offset_file_paths():
         
         if not found:
             print_and_log(f"{sync_tag()} {Fore.RED}Video not found anywhere, removing from verification list: {video}{Style.RESET_ALL}")
+            print_and_log(f"{sync_tag()} {Fore.LIGHTRED_EX}Video '{video}' could not be found. This entry may be a leftover from an old run (e.g. the video was deleted, renamed, or replaced) and has been removed from the verification list.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+            input()
     
     # Rewrite file if updates were made or entries were removed
     if updates_made or len(valid_entries) != len(entries[1:]):
@@ -4457,6 +4522,8 @@ if not _has_pending_verification_entries():
         os.remove(metadata_file)
     if os.path.exists(AUTO_ACCEPTED_FILE):
         os.remove(AUTO_ACCEPTED_FILE)
+    if os.path.exists(DRIFT_METADATA_FILE):
+        os.remove(DRIFT_METADATA_FILE)
 
 # Final DRIFT cleanup: all syncing and verification is fully done at this point.
 # Remove any remaining numbered DRIFT files across all video folders.

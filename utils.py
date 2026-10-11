@@ -205,6 +205,47 @@ LANG_2TO3_PREFERRED = {
     'cu': 'chu', 'cv': 'chv', 'kv': 'kom'
 }
 
+# Full language names (as commonly used by subtitle sites, e.g. "31_Dutch.srt") mapped to 2-letter codes.
+LANG_FULLNAME_TO_2 = {
+    'english': 'en', 'dutch': 'nl', 'german': 'de', 'french': 'fr', 'spanish': 'es',
+    'italian': 'it', 'portuguese': 'pt', 'brazilian': 'pt', 'russian': 'ru', 'japanese': 'ja',
+    'korean': 'ko', 'chinese': 'zh', 'swedish': 'sv', 'norwegian': 'no', 'bokmal': 'no',
+    'danish': 'da', 'finnish': 'fi', 'polish': 'pl', 'hungarian': 'hu', 'czech': 'cs',
+    'slovak': 'sk', 'slovenian': 'sl', 'estonian': 'et', 'latvian': 'lv', 'lithuanian': 'lt',
+    'greek': 'el', 'turkish': 'tr', 'arabic': 'ar', 'hebrew': 'he', 'hindi': 'hi',
+    'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id', 'malay': 'ms', 'tagalog': 'tl',
+    'filipino': 'tl', 'ukrainian': 'uk', 'bulgarian': 'bg', 'croatian': 'hr', 'serbian': 'sr',
+    'romanian': 'ro', 'catalan': 'ca', 'basque': 'eu', 'galician': 'gl', 'icelandic': 'is',
+    'albanian': 'sq', 'bosnian': 'bs', 'azerbaijani': 'az', 'kazakh': 'kk', 'uzbek': 'uz',
+    'armenian': 'hy', 'georgian': 'ka', 'burmese': 'my', 'khmer': 'km', 'lao': 'lo',
+    'nepali': 'ne', 'punjabi': 'pa', 'sinhala': 'si', 'tamil': 'ta', 'telugu': 'te',
+    'kannada': 'kn', 'malayalam': 'ml', 'oriya': 'or', 'gujarati': 'gu', 'bengali': 'bn',
+    'assamese': 'as', 'marathi': 'mr', 'sanskrit': 'sa', 'urdu': 'ur', 'persian': 'fa',
+    'farsi': 'fa', 'kurdish': 'ku', 'pashto': 'ps', 'somali': 'so', 'amharic': 'am',
+    'swahili': 'sw', 'afrikaans': 'af', 'yoruba': 'yo', 'hausa': 'ha', 'welsh': 'cy',
+    'irish': 'ga', 'macedonian': 'mk', 'maltese': 'mt', 'esperanto': 'eo', 'big5': 'zh',
+    'mandarin': 'zh', 'cantonese': 'zh',
+}
+
+def detect_language_from_filename(filename: str):
+    """
+    Detect a 2-letter language code from a subtitle filename that identifies
+    its language via a full language name (e.g. "31_Dutch.srt") or a 2/3-letter
+    language code, rather than (or in addition to) an SxxExx episode code.
+    Returns the 2-letter code, or None if nothing recognizable was found.
+    """
+    stem = Path(filename).stem
+    tokens = re.split(r'[._\-\s]+', stem)
+    for token in reversed(tokens):
+        t = token.lower()
+        if t in LANG_FULLNAME_TO_2:
+            return LANG_FULLNAME_TO_2[t]
+        if len(t) == 3 and t in LANG_3TO2_MAP:
+            return LANG_3TO2_MAP[t]
+        if len(t) == 2 and t in LANG_2TO3_PREFERRED:
+            return t
+    return None
+
 def get_subservient_folder():
     """Get the Subservient anchor folder path from config file."""
     config_dir = Path(user_config_dir()) / "Subservient"
@@ -309,7 +350,8 @@ def trim_movie_name(filename):
 def extract_sxxexx_code(name: str) -> str | None:
     """Extract season/episode code from filename."""
     import re
-    match = re.search(r"[sS](\d{1,2})[eE](\d{1,2})", name)
+    # Episode allows up to 3 digits (e.g. "S06E001") so it isn't truncated to just the first 2 digits
+    match = re.search(r"[sS](\d{1,2})[eE](\d{1,3})", name)
     return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}" if match else None
 
 def scan_subtitle_coverage(videos, languages, series_mode=False, show_progress=True, logger_func=None, sync_tag_func=None):
@@ -1713,9 +1755,13 @@ def has_strict_series_naming_pattern(name):
     (with leading zeros) are considered valid series patterns.
     """
     import re
+    # Note: digit-terminated alternatives use a negative lookahead (?!\d) instead of a
+    # trailing \b, since \b fails to match when the digits are immediately followed by
+    # another word character (e.g. an underscore, as in "S06E001_Piegato..."). The
+    # lookahead only guards against matching a partial number, not the following text.
     series_patterns = [
         # Season patterns
-        r'\b[Ss](\d{2,})\b',                 # S01, S001, s01 (at least 2 digits)
+        r'\b[Ss](\d{2,})(?!\d)',              # S01, S001, s01 (at least 2 digits)
         r'\b[Ss]eason\s*(\d+)\b',            # Season 1, season 01
         r'\b[Ss]érie\s*(\d+)\b',             # Série 1 (French)
         r'\b[Ss]eizoen\s*(\d+)\b',           # Seizoen 1 (Dutch)
@@ -1725,14 +1771,14 @@ def has_strict_series_naming_pattern(name):
         r'\b[Ss]tagione\s*(\d+)\b',          # Stagione 1 (Italian)
         
         # Episode patterns
-        r'\b[Ee](\d{2,})\b',                 # E01, E001, e01 (at least 2 digits)
+        r'\b[Ee](\d{2,})(?!\d)',              # E01, E001, e01 (at least 2 digits)
         r'\b[Ee]pisode\s*(\d+)\b',           # Episode 1, episode 01
         r'\bEp\s*(\d+)\b',                   # Ep 1, Ep01
         
         # Combined patterns - STRICT: only accept properly formatted SxxExx
-        r'\b(\d+)[xX](\d{2,})\b',            # 1x01, 1X01 (episode must have 2+ digits)
-        r'\b[Ss](\d{2,})[Ee](\d{2,})\b',     # STRICT: S01E01, S001E001 (both must have 2+ digits)
-        r'\b[Ss](\d{2,})\s*[Ee](\d{2,})\b',  # STRICT: S01 E01, S001 E001
+        r'\b(\d+)[xX](\d{2,})(?!\d)',         # 1x01, 1X01 (episode must have 2+ digits)
+        r'\b[Ss](\d{2,})[Ee](\d{2,})(?!\d)',  # STRICT: S01E01, S001E001 (both must have 2+ digits)
+        r'\b[Ss](\d{2,})\s*[Ee](\d{2,})(?!\d)', # STRICT: S01 E01, S001 E001
         
         # Alternative patterns
         r'\b[Pp]art\s*(\d+)\b',              # Part 1
@@ -1743,6 +1789,137 @@ def has_strict_series_naming_pattern(name):
         if re.search(pattern, name, re.IGNORECASE):
             return True
     return False
+
+# Word-based season/episode names in several languages, used by the loose detector below
+_SEASON_WORD_PATTERN = r'(?:season|seizoen|saison|staffel|temporada|stagione|s[ée]rie)'
+_EPISODE_WORD_PATTERN = r'(?:episode|aflevering|folge|epis[oó]dio|ep)'
+
+def _extract_season_from_folder_name(folder_name):
+    """Try to extract a season number from a folder name like 'Season 1', 'Seizoen 02', 'S01'."""
+    import re
+    if not folder_name:
+        return None
+    match = re.search(rf'{_SEASON_WORD_PATTERN}\.?\s*#?(\d{{1,4}})', folder_name, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    match = re.search(r'\b[Ss](\d{1,4})\b', folder_name)
+    if match:
+        return int(match.group(1))
+    return None
+
+def detect_episode_info_loose(filename, folder_name=None):
+    """Try to detect a (season, episode) pair from a filename using a wide range of common,
+    non-strict naming conventions, falling back to the parent folder name for the season
+    number when only an episode number is present in the filename.
+
+    Recognizes (among others):
+    - Word-based season/episode names in several languages, e.g. 'Season 1 Episode 01',
+      'Seizoen 1 Aflevering 3', 'Saison 1 Épisode 2', 'Staffel 1 Folge 4'
+    - '1x01' / '01x001' style codes
+    - Loosely formatted SxxExx, e.g. 'S1E1', 'S1 E01', 'S01.E01'
+    - Episode-only notations (e.g. 'Episode 5', 'Ep 05') combined with a season number
+      taken from the parent folder name (e.g. a 'Season 1' folder)
+    - Leading numeric episode indices (e.g. '01 - Title.mkv') combined with a parent
+      folder season number
+
+    Returns a (season, episode) tuple of ints, or (None, None) if nothing was recognized.
+    """
+    import re
+    name = filename
+
+    # 1. Word-based 'Season <n> ... Episode <n>' in any supported language/order of words
+    match = re.search(
+        rf'{_SEASON_WORD_PATTERN}\.?\s*#?(\d{{1,4}}).{{0,20}}?{_EPISODE_WORD_PATTERN}\.?\s*#?(\d{{1,4}})',
+        name, re.IGNORECASE)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+
+    # 2. '1x01' / '01x001' style codes
+    match = re.search(r'\b(\d{1,2})[xX](\d{1,3})\b', name)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+
+    # 3. Loosely formatted SxxExx (any digit width, optional separators): S1E1, S01 E1, S01.E01
+    match = re.search(r'\b[Ss](\d{1,4})\s*[.\-_ ]?\s*[Ee](\d{1,4})\b', name)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+
+    # 4. Episode-only word notation -> season number comes from the parent folder name
+    match = re.search(rf'{_EPISODE_WORD_PATTERN}\.?\s*#?(\d{{1,4}})', name, re.IGNORECASE)
+    if match:
+        season = _extract_season_from_folder_name(folder_name)
+        if season is not None:
+            return season, int(match.group(1))
+
+    # 5. Leading numeric episode index (e.g. '01 - Title', '01. Title') -> season from folder name
+    match = re.match(r'^\s*(\d{1,3})\s*[-._]\s*\S', name)
+    if match:
+        season = _extract_season_from_folder_name(folder_name)
+        if season is not None:
+            return season, int(match.group(1))
+
+    return (None, None)
+
+def attempt_rename_problematic_series_file(file_path, folder_name=None):
+    """Try to auto-rename a single problematic series video file by detecting its
+    season/episode number (see detect_episode_info_loose) and appending a normalized
+    'SxxExx' code to the end of the original filename, keeping the original name intact.
+
+    Returns a dict:
+        success (bool): whether a rename was performed
+        recognized (bool): whether season/episode info could be detected at all
+        old_name (str), new_name (str or None), error (str or None)
+    """
+    from pathlib import Path
+    file_path = Path(file_path)
+    season, episode = detect_episode_info_loose(file_path.stem, folder_name)
+    if season is None or episode is None:
+        return {'success': False, 'recognized': False, 'old_name': file_path.name, 'new_name': None, 'error': None}
+
+    sxxexx = f"S{season:02d}E{episode:02d}"
+    new_stem = file_path.stem.rstrip(' .-_') + f" {sxxexx}"
+    new_name = f"{new_stem}{file_path.suffix}"
+    new_path = file_path.parent / new_name
+
+    if new_path.exists() and new_path != file_path:
+        return {'success': False, 'recognized': True, 'old_name': file_path.name, 'new_name': new_name, 'error': 'target_exists'}
+
+    try:
+        file_path.rename(new_path)
+        return {'success': True, 'recognized': True, 'old_name': file_path.name, 'new_name': new_name, 'error': None}
+    except Exception as e:
+        return {'success': False, 'recognized': True, 'old_name': file_path.name, 'new_name': new_name, 'error': str(e)}
+
+def auto_rename_series_naming_issues(local_path, problematic_files):
+    """Attempt to automatically fix a list of problematic series video files (as returned
+    by validate_series_naming) by detecting season/episode info from common filename
+    and parent-folder conventions and renaming files accordingly.
+
+    Returns a dict:
+        renamed (list of {'old': relative path, 'new': relative path}),
+        still_problematic (list of the original problematic_file entries that could not be fixed),
+        renamed_count (int), still_problematic_count (int)
+    """
+    from pathlib import Path
+    local_path = Path(local_path)
+    renamed = []
+    still_problematic = []
+
+    for info in problematic_files:
+        full_path = local_path / info['path']
+        result = attempt_rename_problematic_series_file(full_path, folder_name=info.get('folder'))
+        if result['success']:
+            new_relative = str(Path(info['path']).parent / result['new_name'])
+            renamed.append({'old': info['path'], 'new': new_relative})
+        else:
+            still_problematic.append(info)
+
+    return {
+        'renamed': renamed,
+        'still_problematic': still_problematic,
+        'renamed_count': len(renamed),
+        'still_problematic_count': len(still_problematic),
+    }
 
 def detect_potential_movies_in_series_mode(local_path, config_path=None):
     """Detect folders with single videos or non-series naming in series mode.
@@ -2073,10 +2250,27 @@ def validate_series_naming(local_path, config_path=None):
     except (PermissionError, OSError):
         pass
     
-    # Also check current folder for direct video files
-    prob_files, good_files = scan_series_folder(local_path, ".")
-    all_problematic_files.extend(prob_files)
-    all_good_files.extend(good_files)
+    # Also check for video files directly in the current folder (subfolders were
+    # already scanned recursively above, so only look at files here to avoid duplicates)
+    try:
+        for item in local_path.iterdir():
+            if item.is_file() and item.suffix.lower() in video_exts:
+                if has_sxxexx_pattern(item.name):
+                    normalized = normalize_sxxexx(item.name)
+                    all_good_files.append({
+                        'file': item.name,
+                        'path': item.name,
+                        'current_pattern': normalized,
+                        'needs_rename': normalized != item.name
+                    })
+                else:
+                    all_problematic_files.append({
+                        'file': item.name,
+                        'path': item.name,
+                        'folder': local_path.name
+                    })
+    except (PermissionError, OSError):
+        pass
     
     return {
         'validation_needed': True,

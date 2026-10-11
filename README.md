@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.89.2-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.4-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
@@ -1836,6 +1836,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🚀 **2026-10-11** | v0.89.4 | Series Naming & Sync Update | Loose episode detection with auto-rename, subtitle folder validation, RAR archive support, track priority ordering and DRIFT cleanup improvements |
 | 🚀 **2026-01-28** | v0.89.2 | Tools & Options Update | Added "Delete moved_subtitles folders" cleanup tool and manual verification option 6 (skip & exclude) |
 | 🚀 **2026-01-26** | v0.89 | Season Maps & DRIFT Recovery | Pre-downloaded subtitle support (Season Maps) and automatic DRIFT recovery system |
 | 🚀 **2025-11-30** | v0.88 | Smart Sync & Series Enhancement | Smart Sync mode for optimal subtitle selection and enhanced TV-Series functionality |
@@ -1847,7 +1848,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 | 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Public alpha release |
 | 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.89.2** - New: moved_subtitles cleanup tool & enhanced manual verification with skip option!
+> 🎉 **Current Version: v0.89.4** - New: smarter series file/folder naming handling, RAR support & sync improvements!
 
 <br>
 
@@ -1967,7 +1968,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.89.2-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.4-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)

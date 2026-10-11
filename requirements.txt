@@ -5,3 +5,4 @@ ffsubsync
 platformdirs
 pycountry
 tqdm
+rarfile
