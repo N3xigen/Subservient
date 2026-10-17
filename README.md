@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.89.4-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.5-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
@@ -1836,6 +1836,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🚀 **2026-10-17** | v0.89.5 | Track Repair & Audio Preservation | Intelligent Track Repair with Quick Track Removal and Change Default Audio Track, original audio is no longer dropped for being outside your language list, and remuxes are validated before the original is replaced |
 | 🚀 **2026-10-11** | v0.89.4 | Series Naming & Sync Update | Loose episode detection with auto-rename, subtitle folder validation, RAR archive support, track priority ordering and DRIFT cleanup improvements |
 | 🚀 **2026-01-28** | v0.89.2 | Tools & Options Update | Added "Delete moved_subtitles folders" cleanup tool and manual verification option 6 (skip & exclude) |
 | 🚀 **2026-01-26** | v0.89 | Season Maps & DRIFT Recovery | Pre-downloaded subtitle support (Season Maps) and automatic DRIFT recovery system |
@@ -1848,7 +1849,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 | 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Public alpha release |
 | 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.89.4** - New: smarter series file/folder naming handling, RAR support & sync improvements!
+> 🎉 **Current Version: v0.89.5** - New: Track Repair menu (quick track removal, default audio switching) and safer audio preservation!
 
 <br>
 
@@ -1968,7 +1969,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.89.4-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.5-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)

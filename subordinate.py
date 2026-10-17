@@ -472,7 +472,8 @@ def print_extra_tools_menu():
     
     print(f"  {Fore.GREEN}1{Style.RESET_ALL} = Subtitle Cleaner - Remove ads and unwanted content from subtitle files")
     print(f"  {Fore.GREEN}2{Style.RESET_ALL} = Delete moved_subtitles folders - Clean up old subtitle backups")
-    print(f"  {Fore.RED}3{Style.RESET_ALL} = Return to main menu\n")
+    print(f"  {Fore.GREEN}3{Style.RESET_ALL} = Intelligent Track Repair - Verify, correct, prioritize and reorder audio/subtitle tracks in MKV files")
+    print(f"  {Fore.RED}4{Style.RESET_ALL} = Return to main menu\n")
     
     print(f"{Style.DIM}More tools will be added in future updates.{Style.RESET_ALL}")
 
@@ -654,10 +655,31 @@ def show_extra_tools_menu():
         elif choice == "2":
             show_delete_moved_subtitles_confirmation()
         elif choice == "3":
+            show_track_repair()
+        elif choice == "4":
             break
         else:
-            print(f"{Fore.RED}Invalid choice. Please select 1, 2, or 3.{Style.RESET_ALL}")
+            print(f"{Fore.RED}Invalid choice. Please select 1, 2, 3, or 4.{Style.RESET_ALL}")
             time.sleep(1)
+
+def show_track_repair():
+    """Load track_repair.py from the Subservient folder and run it on the folder subordinate.py lives in."""
+    anchor = Path(utils.__file__).resolve().parent
+    module_path = anchor / "track_repair.py"
+    try:
+        if not module_path.exists():
+            raise FileNotFoundError(f"track_repair.py not found in {anchor}")
+        if str(anchor) not in sys.path:
+            sys.path.insert(0, str(anchor))
+        spec = importlib.util.spec_from_file_location("track_repair", str(module_path))
+        track_repair = importlib.util.module_from_spec(spec)
+        sys.modules["track_repair"] = track_repair  # dataclasses needs the module registered
+        spec.loader.exec_module(track_repair)
+        track_repair.run_track_repair(Path(__file__).parent.resolve(), f"                   {Fore.YELLOW}Intelligent Track Repair{Style.RESET_ALL}")
+    except Exception as e:
+        utils.clear_and_print_ascii(BANNER_LINE)
+        print(f"{Fore.RED}Intelligent Track Repair could not run: {e}{Style.RESET_ALL}")
+        input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL} ")
 
 def show_subtitle_cleaner():
     """Handle the Subtitle Cleaner main interface."""

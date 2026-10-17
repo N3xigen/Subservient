@@ -2387,3 +2387,110 @@ def clean_drift_subtitle_metadata(metadata_path: str, keys_to_remove: set):
                     f.write(entry_line + "\n")
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Audio preservation policy and remux safety (shared by extraction and track repair)
+# ---------------------------------------------------------------------------
+
+_NOT_ORIGINAL_NAME = re.compile(r'commentary|descriptive|audio description|\bdub', re.IGNORECASE)
+_ORIGINAL_NAME = re.compile(r'\boriginal\b|\borig\b|\bov\b', re.IGNORECASE)
+
+
+def select_audio_tracks(tracks, is_wanted):
+    """Decide which audio tracks survive filtering; never returns an empty list for non-empty input.
+
+    tracks: dicts with 'id', 'lang' (3-letter), 'default' (bool), 'name', in any order.
+    is_wanted: predicate for the configured audio_track_languages.
+    Returns (keep_ids ordered by id, reasons {id: why kept or removed}). Filenames are never consulted.
+    """
+    ordered = sorted(tracks, key=lambda t: int(t['id']))
+    if not ordered:
+        return [], {}
+    if len(ordered) == 1:
+        return [ordered[0]['id']], {ordered[0]['id']: 'only audio track'}
+
+    def wanted(t):
+        return t['lang'] in ('und', '') or is_wanted(t['lang'])
+
+    def extra(t):
+        return bool(_NOT_ORIGINAL_NAME.search(t.get('name') or ''))
+
+    reasons = {}
+
+    def protect(t, why):
+        reasons.setdefault(t['id'], why)
+
+    defaults = [t for t in ordered if t['default']]
+    for t in ordered:
+        if _ORIGINAL_NAME.search(t.get('name') or ''):
+            protect(t, 'named as original')
+    if len(defaults) == 1:
+        protect(defaults[0], 'default track')
+        if wanted(defaults[0]):
+            # A default in a preferred language does not prove it is the original; keep plausible alternatives.
+            for t in ordered:
+                if not extra(t):
+                    protect(t, 'original audio cannot be ruled out')
+        elif ordered[0] is not defaults[0] and not extra(ordered[0]):
+            protect(ordered[0], 'first track while default flag points elsewhere')
+    else:
+        for t in ordered:
+            if not extra(t):
+                protect(t, 'no reliable default flag')
+    for t in ordered:
+        if wanted(t):
+            reasons.setdefault(t['id'], 'configured language')
+    if not reasons:
+        protect(ordered[0], 'fallback: first audio track')
+    return [t['id'] for t in ordered if t['id'] in reasons], reasons
+
+
+def resolve_audio_default(kept_ids, source_default_ids, priority_default_id):
+    """Keep a single existing default flag when its track survives; otherwise use the priority-based default."""
+    if len(source_default_ids) == 1 and source_default_ids[0] in kept_ids:
+        return source_default_ids[0]
+    return priority_default_id
+
+
+def check_remux_result(src_info, out_info, keep_audio, keep_subs):
+    """Compare two `mkvmerge -J` dicts; returns a problem description or None when the output looks right."""
+    if not out_info.get('container', {}).get('recognized', True):
+        return 'output is not a readable MKV'
+
+    def of_type(info, kind, ids=None):
+        return [t for t in info.get('tracks', []) if t.get('type') == kind and (ids is None or str(t.get('id')) in ids)]
+
+    def langs(tracks):
+        return sorted((t.get('properties', {}).get('language') or 'und') for t in tracks)
+
+    if len(of_type(out_info, 'video')) != len(of_type(src_info, 'video')):
+        return 'video tracks do not match the source'
+    want_audio = of_type(src_info, 'audio', {str(i) for i in keep_audio})
+    if of_type(src_info, 'audio') and not want_audio:
+        return 'the source has audio but no audio track would be kept'
+    got_audio = of_type(out_info, 'audio')
+    if len(got_audio) != len(want_audio) or langs(got_audio) != langs(want_audio):
+        return 'audio tracks do not match the expected selection'
+    if len(of_type(out_info, 'subtitles')) != len(of_type(src_info, 'subtitles', {str(i) for i in keep_subs})):
+        return 'subtitle tracks do not match the expected selection'
+
+    def chapters(info):
+        return sum(c.get('num_entries', 0) for c in info.get('chapters', []))
+
+    if chapters(out_info) != chapters(src_info):
+        return 'chapters were lost'
+    if len(out_info.get('attachments', [])) != len(src_info.get('attachments', [])):
+        return 'attachments were lost'
+    return None
+
+
+def commit_remux(temp_path, original_path, final_path):
+    """Replace the original with the validated temp file; the original is never deleted before the new file is in place."""
+    os.replace(temp_path, final_path)
+    if Path(final_path) != Path(original_path) and Path(original_path).exists():
+        Path(original_path).unlink()
+
+
+def has_free_space(directory, needed_bytes):
+    return shutil.disk_usage(directory).free > needed_bytes * 1.05

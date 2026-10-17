@@ -44,7 +44,7 @@ import json
 import pycountry
 import threading
 import time
-from utils import ASCII_ART, clear_and_print_ascii, map_lang_3to2, get_skip_dirs_from_config, LANG_2TO3_PREFERRED, lang_in_list, fix_permissions_proactively, ensure_file_writable, ensure_directory_writable
+from utils import ASCII_ART, clear_and_print_ascii, map_lang_3to2, get_skip_dirs_from_config, LANG_2TO3_PREFERRED, lang_in_list, fix_permissions_proactively, ensure_file_writable, ensure_directory_writable, select_audio_tracks, resolve_audio_default, check_remux_result, commit_remux
 
 SNAPSHOT_DIR = Path(__file__).parent.resolve()
 BANNER_LINE = f"                   {Style.BRIGHT}{Fore.RED}[Phase 2/4]{Style.RESET_ALL} Subtitle Extraction"
@@ -337,7 +337,7 @@ def run_remux_with_progress(cmd, temp_path, orig_size):
     stdout, stderr = process.communicate()
     stop_flag[0] = True
     t.join()
-    return stdout, stderr
+    return stdout, stderr, process.returncode
 def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     """Extract internal subtitles from video file and clean up temporary files."""
     extracted_files = []
@@ -801,6 +801,9 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     mkv_audio_langs_3 = set()
     mkv_audio_track_langs = {}
     mkv_audio_current_default = None  # track_id currently flagged as default (if any)
+    mkv_audio_default_ids = []
+    mkv_audio_meta = {}
+    mkv_info_ok = False
     if result_json.returncode == 0:
         try:
             mkv_info = json.loads(result_json.stdout)
@@ -815,7 +818,10 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                     mkv_audio_track_langs[track_id] = lang_code_3
                     if track.get('properties', {}).get('default_track', False):
                         mkv_audio_current_default = track_id
+                        mkv_audio_default_ids.append(track_id)
+                    mkv_audio_meta[track_id] = track.get('properties', {}).get('track_name', '') or ''
                     log(f"[DEBUG] Stored MKV audio track: id={track_id}, original='{lang_code}', iso3='{lang_code_3}'")
+            mkv_info_ok = True
             log(f"[DEBUG] All MKV audio 3-letter codes: {sorted(mkv_audio_langs_3)}")
         except Exception as e:
             print_and_log(f"{ext_tag()} {Fore.RED}Failed to parse mkvmerge JSON output for audio track storing: {e}{Style.RESET_ALL}")
@@ -851,26 +857,6 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 config_audio_langs_3_ordered.append(lang3)
         log(f"[DEBUG] All config audio 3-letter codes: {sorted(config_audio_langs_3)}")
     
-        primary_audio_track = None
-        if mkv_audio_track_langs:
-            primary_audio_track = min(mkv_audio_track_langs.keys(), key=int)
-            log(f"[DEBUG] Primary audio track identified: {primary_audio_track}")
-    
-        filename_upper = file_path.name.upper()
-        multi_lang_indicators = [
-            'LICDOM', 'ITA', 'ENG', 'FRA', 'GER', 'SPA', 'MULTI', 'DUT', 'NLD', 'NL', 'DUTCH',
-            'RUS', 'RUSSIAN', 'POR', 'PT', 'PORTUGUESE', 'CHI', 'CHN', 'CHINESE', 'MANDARIN', 
-            'CANTONESE', 'JPN', 'JAP', 'JAPANESE', 'KOR', 'KOREAN', 'POL', 'POLISH', 'CZE', 
-            'CZECH', 'HUN', 'HUNGARIAN', 'SWE', 'SWEDISH', 'NOR', 'NORWEGIAN', 'DAN', 'DANISH',
-            'TUR', 'TURKISH', 'HEB', 'HEBREW', 'ARA', 'ARABIC', 'HIN', 'HINDI', 'TAM', 'TAMIL',
-            'THA', 'THAI', 'VIE', 'VIETNAMESE', 'UKR', 'UKRAINIAN', 'BUL', 'BULGARIAN', 'ROM',
-            'ROMANIAN', 'GRE', 'GREEK', 'SER', 'SERBIAN', 'CRO', 'CROATIAN', 'DUAL', 'DUALAUDIO', 'AC3'
-        ]
-        is_multi_lang_release = any(indicator in filename_upper for indicator in multi_lang_indicators)
-        if is_multi_lang_release:
-            log(f"[DEBUG] Multi-language release detected in filename: {file_path.name}")
-            log(f"[DEBUG] Primary track protection will be DISABLED for unwanted languages")
-
         # When all audio tracks are 'und', try to infer their languages from the filename.
         # Scene releases often encode audio languages in dot-separated order before 'sub':
         #   e.g. "Movie.ita.eng.sub.ita.Group.avi"  →  track 1 = ita, track 2 = eng
@@ -926,27 +912,24 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             else:
                 log(f"[DEBUG] Cannot infer audio languages from filename: {len(inferred_langs)} token(s) found vs {len(track_ids_sorted)} track(s)")
 
-        for track_id, lang_code_3 in mkv_audio_track_langs.items():
-            log(f"[DEBUG] Comparing MKV track id={track_id} lang='{lang_code_3}' to config set {config_audio_langs_3}")
-            if lang_code_3 == 'und':
-                print_and_log(f"{ext_tag()} {Fore.GREEN}Keeping audio track {track_id} (lang: und/undefined){Style.RESET_ALL}")
-                audio_tracks.append(track_id)
-            elif lang_in_list(lang_code_3, config_audio_langs_3):
-                print_and_log(f"{ext_tag()} {Fore.GREEN}Keeping audio track {track_id} (lang: {lang_code_3}){Style.RESET_ALL}")
-                audio_tracks.append(track_id)
-            elif track_id == primary_audio_track and not is_multi_lang_release:
-                print_and_log(f"{ext_tag()} {Fore.YELLOW}Keeping primary audio track {track_id} (lang: {lang_code_3}) - Main track protection{Style.RESET_ALL}")
+        # Original audio is always preserved; only tracks that cannot be an original and are not in
+        # audio_track_languages are removed. Decisions use mkvmerge track metadata, never the filename.
+        keep_ids, audio_reasons = select_audio_tracks(
+            [{'id': tid, 'lang': lang3, 'default': tid in mkv_audio_default_ids, 'name': mkv_audio_meta.get(tid, '')}
+             for tid, lang3 in mkv_audio_track_langs.items()],
+            lambda lang3: lang_in_list(lang3, config_audio_langs_3))
+        for track_id, lang_code_3 in sorted(mkv_audio_track_langs.items(), key=lambda kv: int(kv[0])):
+            if track_id in keep_ids:
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Keeping audio track {track_id} (lang: {lang_code_3}) - {audio_reasons[track_id]}{Style.RESET_ALL}")
                 audio_tracks.append(track_id)
             else:
-                if track_id == primary_audio_track and is_multi_lang_release:
-                    print_and_log(f"{ext_tag()} {Fore.RED}Marking primary audio track {track_id} (lang: {lang_code_3}) for removal - Multi-lang release detected{Style.RESET_ALL}")
-                else:
-                    print_and_log(f"{ext_tag()} {Fore.RED}Marking audio track {track_id} (lang: {lang_code_3}) for removal{Style.RESET_ALL}")
+                print_and_log(f"{ext_tag()} {Fore.RED}Marking audio track {track_id} (lang: {lang_code_3}) for removal - not a preferred language and not a possible original{Style.RESET_ALL}")
                 unwanted_audio_tracks.append(track_id)
-    
+
         try:
             audio_tracks, audio_default_track_id = order_tracks_by_priority(audio_tracks, mkv_audio_track_langs, config_audio_langs_3_ordered)
-            audio_default_changed = audio_default_track_id is not None and audio_default_track_id != mkv_audio_current_default
+            audio_default_track_id = resolve_audio_default(audio_tracks, mkv_audio_default_ids, audio_default_track_id)
+            audio_default_changed = audio_default_track_id is not None and mkv_audio_default_ids != [audio_default_track_id]
             if audio_default_track_id is not None:
                 log(f"[DEBUG] Audio track priority order (audio_track_languages): {audio_tracks} - default: {audio_default_track_id}")
         except Exception as e:
@@ -1189,9 +1172,15 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
     track_priority_changed = audio_order_changed or audio_default_changed or subtitle_order_changed or subtitle_default_changed
     if track_priority_changed and not (unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux):
         print_and_log(f"{ext_tag()} {Fore.CYAN}Audio/subtitle priority order changed in config — remuxing to apply new track order/default track...{Style.RESET_ALL}")
-    if unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux or track_priority_changed:
-        temp_path = parent_dir / (base_name + ".temp.mkv")
-        # mkvmerge always outputs MKV; for non-mkv inputs the final file gets .mkv extension
+    remux_needed = bool(unwanted_audio_tracks or unwanted_subtitle_tracks or needs_conversion_remux or track_priority_changed)
+    if remux_needed and not mkv_info_ok:
+        print_and_log(f"{ext_tag()} {Fore.RED}Could not read the track information of this file - remux skipped, original left untouched{Style.RESET_ALL}")
+        remux_needed = False
+    elif remux_needed and mkv_audio_track_langs and not audio_tracks:
+        print_and_log(f"{ext_tag()} {Fore.RED}Safety: no audio track would remain - remux skipped, original left untouched{Style.RESET_ALL}")
+        remux_needed = False
+    if remux_needed:
+        temp_path = parent_dir / (base_name + ".temp.mkv")        # mkvmerge always outputs MKV; for non-mkv inputs the final file gets .mkv extension
         final_path = file_path if file_path.suffix.lower() == '.mkv' else file_path.with_suffix('.mkv')
         
         fixed_items = fix_permissions_proactively(file_path)
@@ -1248,7 +1237,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
 
         t = threading.Thread(target=progress_thread)
         t.start()
-        stdout, stderr = run_remux_with_progress(mkvmerge_cmd, temp_path, orig_size)
+        stdout, stderr, remux_rc = run_remux_with_progress(mkvmerge_cmd, temp_path, orig_size)
         stop_flag[0] = True
         t.join()
         for line in (stdout + '\n' + stderr).splitlines():
@@ -1256,10 +1245,28 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 print_and_log(line)
             elif line.strip():
                 log(line)
-        if temp_path.exists():
+        remux_problem = None
+        if remux_rc >= 2:
+            remux_problem = f"mkvmerge failed (exit code {remux_rc})"
+        elif not temp_path.exists() or temp_path.stat().st_size == 0:
+            remux_problem = 'no output file was produced'
+        else:
             try:
-                file_path.unlink()
-                temp_path.rename(final_path)
+                out_probe = subprocess.run(['mkvmerge', '-J', str(temp_path)], capture_output=True, text=True, encoding='utf-8', errors='replace')
+                if out_probe.returncode >= 2:
+                    remux_problem = 'the remuxed file could not be read back'
+                else:
+                    remux_problem = check_remux_result(json.loads(result_json.stdout), json.loads(out_probe.stdout), audio_tracks, subtitle_tracks)
+            except Exception as e:
+                remux_problem = f'the remuxed file could not be verified ({e})'
+        if remux_problem and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+        if not remux_problem:
+            try:
+                commit_remux(temp_path, file_path, final_path)
                 file_path = final_path
                 did_remux = True
                 print_and_log(f"{ext_tag()} {Fore.GREEN}Remuxed to remove unwanted internal subtitles and audio tracks: {file_path.name}{Style.RESET_ALL}")
@@ -1269,8 +1276,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 if fixed_items:
                     print_and_log(f"{ext_tag()} {Fore.CYAN}Fixed permissions for: {', '.join(fixed_items)}{Style.RESET_ALL}")
                     try:
-                        file_path.unlink()
-                        temp_path.rename(final_path)
+                        commit_remux(temp_path, file_path, final_path)
                         file_path = final_path
                         did_remux = True
                         print_and_log(f"{ext_tag()} {Fore.GREEN}Permission fix successful! Remuxed to remove unwanted internal subtitles and audio tracks: {file_path.name}{Style.RESET_ALL}")
@@ -1325,7 +1331,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                             print_and_log(f"{ext_tag()} {Fore.YELLOW}Warning: Could not clean up temp file: {str(cleanup_error)}{Style.RESET_ALL}")
                             print_and_log(f"{ext_tag()} {Fore.YELLOW}You may need to manually remove: {temp_path.name}{Style.RESET_ALL}")
         else:
-            print_and_log(f"{ext_tag()} {Fore.RED}Remux failed, temp.mkv not found.{Style.RESET_ALL}")
+            print_and_log(f"{ext_tag()} {Fore.RED}Remux failed ({remux_problem}) - original file left untouched.{Style.RESET_ALL}")
     else:
         print_and_log(f"{Fore.WHITE}{ext_tag()} No unwanted internal subtitles or audio tracks — {Fore.GREEN}remux skipped{Style.RESET_ALL}")
 
@@ -1549,6 +1555,8 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 for t in pr_info.get('tracks', [])
             )]
             cleanup_temp = parent_dir / (base_name + ".temp.mkv")
+            if any(t.get('type') == 'audio' for t in pr_info.get('tracks', [])) and not audio_keep:
+                raise RuntimeError('no audio track would remain')
             cleanup_cmd = ['mkvmerge', '-o', str(cleanup_temp)]
             if audio_keep:
                 cleanup_cmd += ['--audio-tracks', ','.join(audio_keep)]
@@ -1560,13 +1568,21 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
                 cleanup_cmd += ['--no-subtitles']
             cleanup_cmd += [str(file_path)]
             orig_size = file_path.stat().st_size
-            run_remux_with_progress(cleanup_cmd, cleanup_temp, orig_size)
-            if cleanup_temp.exists():
-                file_path.unlink()
-                cleanup_temp.rename(file_path)
-                print_and_log(f"{ext_tag()} {Fore.GREEN}Cleanup remux complete: unwanted tracks removed from MKV{Style.RESET_ALL}")
+            _, _, cleanup_rc = run_remux_with_progress(cleanup_cmd, cleanup_temp, orig_size)
+            cleanup_problem = None
+            if cleanup_rc >= 2 or not cleanup_temp.exists() or cleanup_temp.stat().st_size == 0:
+                cleanup_problem = f"mkvmerge failed (exit code {cleanup_rc})"
             else:
-                print_and_log(f"{ext_tag()} {Fore.RED}Cleanup remux failed: temp file not found{Style.RESET_ALL}")
+                out_probe = subprocess.run(['mkvmerge', '-J', str(cleanup_temp)], capture_output=True, text=True, encoding='utf-8', errors='replace')
+                cleanup_problem = ('the remuxed file could not be read back' if out_probe.returncode >= 2
+                                   else check_remux_result(pr_info, json.loads(out_probe.stdout), audio_keep, sub_keep))
+            if cleanup_problem:
+                if cleanup_temp.exists():
+                    cleanup_temp.unlink()
+                print_and_log(f"{ext_tag()} {Fore.RED}Cleanup remux failed ({cleanup_problem}) - original file left untouched{Style.RESET_ALL}")
+            else:
+                commit_remux(cleanup_temp, file_path, file_path)
+                print_and_log(f"{ext_tag()} {Fore.GREEN}Cleanup remux complete: unwanted tracks removed from MKV{Style.RESET_ALL}")
         except Exception as e:
             print_and_log(f"{ext_tag()} {Fore.RED}Cleanup remux error: {e}{Style.RESET_ALL}")
 

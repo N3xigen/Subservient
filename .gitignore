@@ -35,3 +35,4 @@ data/subtitle_backups/
 # User data/config that shouldn't be shared
 .config
 *.personal
+track_repair_log.jsonl
