@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.89.5-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.6-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-orange.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/license-GPL--3.0-red.svg)](LICENSE)
@@ -1836,6 +1836,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 
 | Date | Version | Feature | Description |
 |------|---------|---------|-------------|
+| 🚀 **2026-10-19** | v0.89.6 | Smarter Search & Faster Downloads | Wanted-language subtitle tracks are tried first during extraction, candidates are ordered by how well they match the video, IMDb-led title cleaning (no more 'The Last' for 'The Last Kingdom'), faster back-to-back downloads and one screen per video |
 | 🚀 **2026-10-17** | v0.89.5 | Track Repair & Audio Preservation | Intelligent Track Repair with Quick Track Removal and Change Default Audio Track, original audio is no longer dropped for being outside your language list, and remuxes are validated before the original is replaced |
 | 🚀 **2026-10-11** | v0.89.4 | Series Naming & Sync Update | Loose episode detection with auto-rename, subtitle folder validation, RAR archive support, track priority ordering and DRIFT cleanup improvements |
 | 🚀 **2026-01-28** | v0.89.2 | Tools & Options Update | Added "Delete moved_subtitles folders" cleanup tool and manual verification option 6 (skip & exclude) |
@@ -1849,7 +1850,7 @@ Here are some common issues and solutions to help you get Subservient up and run
 | 🐛 **2025-07-20** | v0.79 | Single/batch video syncs now work! | Public alpha release |
 | 🔧 **2025-07-05** | v0.78 | Manual Verification | Added manual offset verification menu and editor |
 
-> 🎉 **Current Version: v0.89.5** - New: Track Repair menu (quick track removal, default audio switching) and safer audio preservation!
+> 🎉 **Current Version: v0.89.6** - New: smarter subtitle search (IMDb-led title cleaning, best-matching candidates first, wanted-language tracks first) and faster downloads!
 
 <br>
 
@@ -1969,7 +1970,7 @@ The inclusion of various technical format filters and metadata cleaning capabili
 <div align="center">
 **🎬 Made with ❤️ for the subtitle automation community**
 
-[![Version](https://img.shields.io/badge/version-v0.89.5-brightgreen.svg)](https://github.com/N3xigen/Subservient)
+[![Version](https://img.shields.io/badge/version-v0.89.6-brightgreen.svg)](https://github.com/N3xigen/Subservient)
 [![GitHub](https://img.shields.io/badge/GitHub-Subservient-blue?logo=github)](https://github.com/N3xigen/Subservient)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://docker.com)

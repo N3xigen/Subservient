@@ -245,6 +245,33 @@ def detect_language(sub_path):
     except Exception as e:
         print_and_log(f"{ext_tag()} {Fore.RED}Error detecting language in {sub_path.name}: {str(e)}{Style.RESET_ALL}")
         return "unknown"
+def track_lang_by_id_from_mkv_info(mkv_info):
+    """Map subtitle track id -> normalized 2-letter language tag (e.g. dut/nld -> nl) from mkvmerge -J output."""
+    result = {}
+    for t in (mkv_info or {}).get('tracks', []):
+        if t.get('type') != 'subtitles':
+            continue
+        props = t.get('properties', {})
+        raw = (props.get('language') or props.get('language_ietf') or 'und').lower().split('-')[0]
+        result[str(t.get('id'))] = map_lang_3to2(raw)
+    return result
+def prioritize_wanted_language_lines(subtitle_lines, track_lang_by_id, wanted_languages):
+    """Stable reorder: tracks whose language tag is a wanted language go first, relative order is preserved.
+    Language detection still decides whether a track is really that language."""
+    if not track_lang_by_id:
+        return subtitle_lines
+    wanted = {map_lang_3to2(l) for l in wanted_languages}
+    def is_tagged_wanted(line):
+        try:
+            tid = line.split(':')[0].split()[-1]
+        except IndexError:
+            return False
+        return track_lang_by_id.get(tid) in wanted
+    tagged = [l for l in subtitle_lines if is_tagged_wanted(l)]
+    rest = [l for l in subtitle_lines if not is_tagged_wanted(l)]
+    if tagged and rest:
+        print_and_log(f"{ext_tag()} {Fore.CYAN}Checking {len(tagged)} subtitle track(s) tagged with a wanted language first ({len(rest)} other track(s) afterwards if needed).{Style.RESET_ALL}")
+    return tagged + rest
 def cleanup_unwanted_files(base_path):
     """Remove unwanted files created during extraction process."""
     for ext in UNWANTED_EXTENSIONS:
@@ -399,6 +426,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         # Language exists if either standard or series file exists
         has_lang[lang] = standard_srt.exists() or (series_srt and series_srt.exists())
 
+    sub_lang_by_tid = {}
     try:
         info_cmd_json = ['mkvmerge', '-J', str(file_path)]
         result_json = subprocess.run(info_cmd_json, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -407,6 +435,7 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
             return
         try:
             mkv_info = json.loads(result_json.stdout)
+            sub_lang_by_tid = track_lang_by_id_from_mkv_info(mkv_info)
             audio_tracks = [t for t in mkv_info.get('tracks', []) if t.get('type') == 'audio']
             if audio_tracks:
                 for t in audio_tracks:
@@ -583,6 +612,8 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         # Only run mkvmerge -i if we need to extract subtitles
         lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.splitlines()
         subtitle_lines = [line for line in lines if 'subtitles' in line.lower()]
+        wanted_to_find = [l for l in WANTED_LANGUAGES if not has_lang[l]]
+        subtitle_lines = prioritize_wanted_language_lines(subtitle_lines, sub_lang_by_tid, wanted_to_find)
         
         total_subtitles_to_extract = 0
         for line in subtitle_lines:
@@ -1344,6 +1375,12 @@ def extract_subtitles(file_path, movie_idx=1, total_movies=1):
         print_and_log(f"{ext_tag()} {Fore.CYAN}Post-remux: scanning converted MKV for newly extractable subtitle tracks...{Style.RESET_ALL}")
         pr_lines = subprocess.run(['mkvmerge', '-i', str(file_path)], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.splitlines()
         pr_subtitle_lines = [line for line in pr_lines if 'subtitles' in line.lower()]
+        try:
+            pr_json = subprocess.run(['mkvmerge', '-J', str(file_path)], capture_output=True, text=True, encoding='utf-8', errors='replace')
+            pr_lang_by_tid = track_lang_by_id_from_mkv_info(json.loads(pr_json.stdout)) if pr_json.returncode == 0 else {}
+        except Exception:
+            pr_lang_by_tid = {}
+        pr_subtitle_lines = prioritize_wanted_language_lines(pr_subtitle_lines, pr_lang_by_tid, [l for l in WANTED_LANGUAGES if not has_lang[l]])
 
         pr_total = sum(
             1 for line in pr_subtitle_lines
