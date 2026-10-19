@@ -790,7 +790,8 @@ def clean_title(raw_title: str, all_before_anchor: bool = False, official_words=
     def _unwanted_pattern(terms):
         if not terms:
             return None
-        return r"\b(" + "|".join(re.escape(term) for term in terms) + r")\b"
+        # Longest first so 'web-dl' is matched before 'web' (which would leave 'DL' behind)
+        return r"\b(" + "|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)) + r")\b"
     if all_before_anchor:
         anchor_pos = len(cleaned)
     else:
